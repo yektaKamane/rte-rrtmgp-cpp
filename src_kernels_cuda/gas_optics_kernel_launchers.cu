@@ -226,6 +226,25 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 grid_gpu_maj(grid_bnd_maj, grid_lay_maj, grid_col_maj);
         dim3 block_gpu_maj(block_bnd_maj, block_lay_maj, block_col_maj);
 
+        //std::cout << ncol << " " << nlay << " " << nband << " " << ngpt << std::endl;
+        //std::cout << nflav << " " << neta << " " << npres << " " << ntemp << std::endl;
+        //std::cout << gpoint_flavor.size() << " " << band_lims_gpt.size() << std::endl;
+        //std::cout << kmajor.size() << std::endl;
+        //std::cout << col_mix.size() << " " << fmajor.size() << std::endl;
+        //std::cout << jeta.size() << " " << tropo.size() << std::endl;
+        //std::cout << jtemp.size() << " " << jpress.size() << std::endl;
+        //std::cout << tau.size() << std::endl;
+
+        //gpoint_flavor.dump("gpoint_flavor");
+        //band_lims_gpt.dump("band_lims_gpt");
+        //kmajor.dump("kmajor");
+        //col_mix.dump("col_mix");
+        //fmajor.dump("fmajor");
+        //jeta.dump("jeta");
+        //tropo.dump("tropo");
+        //jtemp.dump("jtemp");
+        //jpress.dump("jpress");
+
         compute_tau_major_absorption_kernel<<<grid_gpu_maj, block_gpu_maj>>>(
                 ncol, nlay, nband, ngpt,
                 nflav, neta, npres, ntemp,
@@ -233,6 +252,8 @@ namespace rrtmgp_kernel_launcher_cuda
                 kmajor.ptr(), col_mix.ptr(), fmajor.ptr(), jeta.ptr(),
                 tropo.ptr(), jtemp.ptr(), jpress.ptr(),
                 tau.ptr(), tau_major);
+
+        //tau.dump("tau");
 
         const int nscale_lower = scale_by_complement_lower.dim(1);
         const int nscale_upper = scale_by_complement_upper.dim(1);
@@ -244,6 +265,32 @@ namespace rrtmgp_kernel_launcher_cuda
 
         dim3 grid_gpu_min(grid_lay_min, grid_col_min);
         dim3 block_gpu_min(block_lay_min, block_col_min);
+
+        //std::cout << ngas << " " << ntemp << " " << nscale_lower << " " << nscale_upper << std::endl;
+        //std::cout << nminorlower << " " << nminorupper << " " << nminorklower << " " << nminorkupper << " " << idx_h2o << std::endl;
+
+        //gpoint_flavor.dump("gpoint_flavor");
+        //kminor_lower.dump("kminor_lower");
+        //kminor_upper.dump("kminor_upper");
+        //minor_limits_gpt_lower.dump("minor_limits_gpt_lower");
+        //minor_limits_gpt_upper.dump("minor_limits_gpt_upper");
+        //minor_scales_with_density_lower.dump("minor_scales_with_density_lower");
+        //minor_scales_with_density_upper.dump("minor_scales_with_density_upper");
+        //scale_by_complement_lower.dump("scale_by_complement_lower");
+        //scale_by_complement_upper.dump("scale_by_complement_upper");
+        //idx_minor_lower.dump("idx_minor_lower");
+        //idx_minor_upper.dump("idx_minor_upper");
+        //idx_minor_scaling_lower.dump("idx_minor_scaling_lower");
+        //idx_minor_scaling_upper.dump("idx_minor_scaling_upper");
+        //kminor_start_lower.dump("kminor_start_lower");
+        //kminor_start_upper.dump("kminor_start_upper");
+        //play.dump("play");
+        //tlay.dump("tlay");
+        //col_gas.dump("col_gas");
+        //fminor.dump("fminor");
+        //jeta.dump("jeta");
+        //jtemp.dump("jtemp");
+        //tropo.dump("jtropo");
 
         compute_tau_minor_absorption_kernel<<<grid_gpu_min, block_gpu_min>>>(
                 ncol, nlay, ngpt,
@@ -263,6 +310,9 @@ namespace rrtmgp_kernel_launcher_cuda
                 play.ptr(), tlay.ptr(), col_gas.ptr(),
                 fminor.ptr(), jeta.ptr(), jtemp.ptr(),
                 tropo.ptr(), tau.ptr(), tau_minor);
+
+        //tau.dump("tau");
+        //throw 1;
 
         cuda_safe_call(cudaFreeAsync(tau_major, 0));
         cuda_safe_call(cudaFreeAsync(tau_minor, 0));

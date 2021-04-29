@@ -1,3 +1,5 @@
+#include "Types.h"
+
 template<typename TF>__device__
 TF interpolate1D(const TF val,
                  const TF offset,
@@ -362,6 +364,7 @@ void compute_tau_minor_absorption_kernel(
     const int icol = blockIdx.y * blockDim.y + threadIdx.y;
     const TF PaTohPa = 0.01;
     const int ncl = ncol * nlay;
+
     if ((icol < ncol) && (ilay < nlay))
     {
         //kernel implementation
