@@ -359,9 +359,9 @@ namespace rrtmgp_kernel_launcher_cuda
         cuda_safe_call(cudaMemcpy(ones, ones_cpu, ones_size, cudaMemcpyHostToDevice));
 
         // Call the kernel.
-        const int block_bnd = 14;
-        const int block_lay = 1;
-        const int block_col = 32;
+        const int block_bnd = 1; // 14;
+        const int block_lay = 2; // 1;
+        const int block_col = 2; // 32;
 
         const int grid_bnd  = nbnd/block_bnd + (nbnd%block_bnd > 0);
         const int grid_lay  = nlay/block_lay + (nlay%block_lay > 0);
@@ -369,6 +369,8 @@ namespace rrtmgp_kernel_launcher_cuda
 
         dim3 grid_gpu(grid_bnd, grid_lay, grid_col);
         dim3 block_gpu(block_bnd, block_lay, block_col);
+
+        //std::cout << nPlanckTemp << " " << sfc_lay << " " << temp_ref_min << " " << totplnk_delta << " " << delta_Tsurf << " " << pfrac << std::endl;
 
         Planck_source_kernel<<<grid_gpu, block_gpu>>>(
                 ncol, nlay, nbnd, ngpt,
@@ -381,6 +383,22 @@ namespace rrtmgp_kernel_launcher_cuda
                 delta_Tsurf, sfc_src.ptr(), lay_src.ptr(),
                 lev_src_inc.ptr(), lev_src_dec.ptr(),
                 sfc_src_jac.ptr(), pfrac);
+
+        // Input kernel
+        //tlev.dump("tlev");
+        //tsfc.dump("tsfc");
+        //gpoint_bands.dump("gpoint_bands");
+        //pfracin.dump("pfracin");
+        //totplnk.dump("totplnk");
+
+        // Output kernel
+        //sfc_src.dump("sfc_src");
+        //sfc_src_jac.dump("sfc_src_jac");
+        //lay_src.dump("lay_src");
+        //lev_src_inc.dump("lev_src_inc");
+        //lev_src_dec.dump("lev_src_dec");
+
+        //throw 1;
 
         cuda_safe_call(cudaFreeAsync(pfrac, 0));
         cuda_safe_call(cudaFreeAsync(ones, 0));
