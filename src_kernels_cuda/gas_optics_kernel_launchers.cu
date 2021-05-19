@@ -226,24 +226,15 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 grid_gpu_maj(grid_bnd_maj, grid_lay_maj, grid_col_maj);
         dim3 block_gpu_maj(block_bnd_maj, block_lay_maj, block_col_maj);
 
-        //std::cout << ncol << " " << nlay << " " << nband << " " << ngpt << std::endl;
-        //std::cout << nflav << " " << neta << " " << npres << " " << ntemp << std::endl;
-        //std::cout << gpoint_flavor.size() << " " << band_lims_gpt.size() << std::endl;
-        //std::cout << kmajor.size() << std::endl;
-        //std::cout << col_mix.size() << " " << fmajor.size() << std::endl;
-        //std::cout << jeta.size() << " " << tropo.size() << std::endl;
-        //std::cout << jtemp.size() << " " << jpress.size() << std::endl;
-        //std::cout << tau.size() << std::endl;
-
-        //gpoint_flavor.dump("gpoint_flavor");
-        //band_lims_gpt.dump("band_lims_gpt");
-        //kmajor.dump("kmajor");
-        //col_mix.dump("col_mix");
-        //fmajor.dump("fmajor");
-        //jeta.dump("jeta");
-        //tropo.dump("tropo");
-        //jtemp.dump("jtemp");
-        //jpress.dump("jpress");
+        gpoint_flavor.dump("gpoint_flavor");
+        band_lims_gpt.dump("band_lims_gpt");
+        kmajor.dump("kmajor");
+        col_mix.dump("col_mix");
+        fmajor.dump("fmajor");
+        jeta.dump("jeta");
+        tropo.dump("tropo");
+        jtemp.dump("jtemp");
+        jpress.dump("jpress");
 
         compute_tau_major_absorption_kernel<<<grid_gpu_maj, block_gpu_maj>>>(
                 ncol, nlay, nband, ngpt,
@@ -253,7 +244,7 @@ namespace rrtmgp_kernel_launcher_cuda
                 tropo.ptr(), jtemp.ptr(), jpress.ptr(),
                 tau.ptr(), tau_major);
 
-        //tau.dump("tau");
+        tau.dump("tau_after_major");
 
         const int nscale_lower = scale_by_complement_lower.dim(1);
         const int nscale_upper = scale_by_complement_upper.dim(1);
@@ -266,31 +257,25 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 grid_gpu_min(grid_lay_min, grid_col_min);
         dim3 block_gpu_min(block_lay_min, block_col_min);
 
-        //std::cout << ngas << " " << ntemp << " " << nscale_lower << " " << nscale_upper << std::endl;
-        //std::cout << nminorlower << " " << nminorupper << " " << nminorklower << " " << nminorkupper << " " << idx_h2o << std::endl;
-
-        //gpoint_flavor.dump("gpoint_flavor");
-        //kminor_lower.dump("kminor_lower");
-        //kminor_upper.dump("kminor_upper");
-        //minor_limits_gpt_lower.dump("minor_limits_gpt_lower");
-        //minor_limits_gpt_upper.dump("minor_limits_gpt_upper");
-        //minor_scales_with_density_lower.dump("minor_scales_with_density_lower");
-        //minor_scales_with_density_upper.dump("minor_scales_with_density_upper");
-        //scale_by_complement_lower.dump("scale_by_complement_lower");
-        //scale_by_complement_upper.dump("scale_by_complement_upper");
-        //idx_minor_lower.dump("idx_minor_lower");
-        //idx_minor_upper.dump("idx_minor_upper");
-        //idx_minor_scaling_lower.dump("idx_minor_scaling_lower");
-        //idx_minor_scaling_upper.dump("idx_minor_scaling_upper");
-        //kminor_start_lower.dump("kminor_start_lower");
-        //kminor_start_upper.dump("kminor_start_upper");
-        //play.dump("play");
-        //tlay.dump("tlay");
-        //col_gas.dump("col_gas");
-        //fminor.dump("fminor");
-        //jeta.dump("jeta");
-        //jtemp.dump("jtemp");
-        //tropo.dump("jtropo");
+        std::cout << "Dumping compute_tau_... fields" << std::endl;
+        kminor_lower.dump("kminor_lower");
+        kminor_upper.dump("kminor_upper");
+        minor_limits_gpt_lower.dump("minor_limits_gpt_lower");
+        minor_limits_gpt_upper.dump("minor_limits_gpt_upper");
+        minor_scales_with_density_lower.dump("minor_scales_with_density_lower");
+        minor_scales_with_density_upper.dump("minor_scales_with_density_upper");
+        scale_by_complement_lower.dump("scale_by_complement_lower");
+        scale_by_complement_upper.dump("scale_by_complement_upper");
+        idx_minor_lower.dump("idx_minor_lower");
+        idx_minor_upper.dump("idx_minor_upper");
+        idx_minor_scaling_lower.dump("idx_minor_scaling_lower");
+        idx_minor_scaling_upper.dump("idx_minor_scaling_upper");
+        kminor_start_lower.dump("kminor_start_lower");
+        kminor_start_upper.dump("kminor_start_upper");
+        play.dump("play");
+        tlay.dump("tlay");
+        col_gas.dump("col_gas");
+        fminor.dump("fminor");
 
         compute_tau_minor_absorption_kernel<<<grid_gpu_min, block_gpu_min>>>(
                 ncol, nlay, ngpt,
@@ -311,8 +296,7 @@ namespace rrtmgp_kernel_launcher_cuda
                 fminor.ptr(), jeta.ptr(), jtemp.ptr(),
                 tropo.ptr(), tau.ptr(), tau_minor);
 
-        //tau.dump("tau");
-        //throw 1;
+        tau.dump("tau_after_minor");
 
         cuda_safe_call(cudaFreeAsync(tau_major, 0));
         cuda_safe_call(cudaFreeAsync(tau_minor, 0));
@@ -370,7 +354,12 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 grid_gpu(grid_bnd, grid_lay, grid_col);
         dim3 block_gpu(block_bnd, block_lay, block_col);
 
-        //std::cout << nPlanckTemp << " " << sfc_lay << " " << temp_ref_min << " " << totplnk_delta << " " << delta_Tsurf << " " << pfrac << std::endl;
+        std::cout << "Dumping Planck_source_kernel fields" << std::endl;
+        tlev.dump("tlev");
+        tsfc.dump("tsfc");
+        gpoint_bands.dump("gpoint_bands");
+        pfracin.dump("pfracin");
+        totplnk.dump("totplnk");
 
         Planck_source_kernel<<<grid_gpu, block_gpu>>>(
                 ncol, nlay, nbnd, ngpt,
@@ -384,24 +373,17 @@ namespace rrtmgp_kernel_launcher_cuda
                 lev_src_inc.ptr(), lev_src_dec.ptr(),
                 sfc_src_jac.ptr(), pfrac);
 
-        // Input kernel
-        //tlev.dump("tlev");
-        //tsfc.dump("tsfc");
-        //gpoint_bands.dump("gpoint_bands");
-        //pfracin.dump("pfracin");
-        //totplnk.dump("totplnk");
-
-        // Output kernel
-        //sfc_src.dump("sfc_src");
-        //sfc_src_jac.dump("sfc_src_jac");
-        //lay_src.dump("lay_src");
-        //lev_src_inc.dump("lev_src_inc");
-        //lev_src_dec.dump("lev_src_dec");
-
-        //throw 1;
+        sfc_src.dump("sfc_src");
+        sfc_src_jac.dump("sfc_src_jac");
+        lay_src.dump("lay_src");
+        lev_src_inc.dump("lev_src_inc");
+        lev_src_dec.dump("lev_src_dec");
 
         cuda_safe_call(cudaFreeAsync(pfrac, 0));
         cuda_safe_call(cudaFreeAsync(ones, 0));
+
+        std::cout << "Throwing now, bye" << std::endl;
+        throw 1;
     }
 }
 
