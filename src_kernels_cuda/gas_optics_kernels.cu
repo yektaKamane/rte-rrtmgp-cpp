@@ -212,9 +212,10 @@ void interpolation_kernel(
         const TF* __restrict__ vmr_ref,
         const TF* __restrict__ play,
         const TF* __restrict__ tlay,
-        TF* __restrict__ col_gas,
+        const TF* __restrict__ col_gas,
         int* __restrict__ jtemp,
-        TF* __restrict__ fmajor, TF* __restrict__ fminor,
+        TF* __restrict__ fmajor,
+        TF* __restrict__ fminor,
         TF* __restrict__ col_mix,
         BOOL_TYPE* __restrict__ tropo,
         int* __restrict__ jeta,
@@ -252,28 +253,28 @@ void interpolation_kernel(
                 const TF ratio_eta_half = vmr_ref[vmr_base_idx + 2 * gas1] /
                                           vmr_ref[vmr_base_idx + 2 * gas2];
                 col_mix[colmix_idx] = col_gas[colgas1_idx] + ratio_eta_half * col_gas[colgas2_idx];
+
                 if (col_mix[colmix_idx] > TF(2.)*tmin)
-                {
                     eta = col_gas[colgas1_idx] / col_mix[colmix_idx];
-                } else
-                {
+                else
                     eta = TF(0.5);
-                }
+
                 const TF loceta = eta * TF(neta-1);
                 jeta[colmix_idx] = min(int(loceta)+1, neta-1);
                 const TF feta = fmod(loceta, TF(1.));
                 const TF ftemp_term  = TF(1-itemp) + TF(2*itemp-1)*ftemp;
+
                 // compute interpolation fractions needed for minot species
                 const int fminor_idx = 2*(itemp + 2*(iflav + icol*nflav + ilay*ncol*nflav));
                 fminor[fminor_idx] = (TF(1.0)-feta) * ftemp_term;
                 fminor[fminor_idx+1] = feta * ftemp_term;
+
                 // compute interpolation fractions needed for major species
                 const int fmajor_idx = 2*2*(itemp + 2*(iflav + icol*nflav + ilay*ncol*nflav));
                 fmajor[fmajor_idx] = (TF(1.0)-fpress) * fminor[fminor_idx];
                 fmajor[fmajor_idx+1] = (TF(1.0)-fpress) * fminor[fminor_idx+1];
                 fmajor[fmajor_idx+2] = fpress * fminor[fminor_idx];
                 fmajor[fmajor_idx+3] = fpress * fminor[fminor_idx+1];
-
             }
         }
     }

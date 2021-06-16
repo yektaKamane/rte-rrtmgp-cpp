@@ -100,6 +100,16 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 block_gpu(block_lay, block_col);
 
         TF tmin = std::numeric_limits<TF>::min();
+
+	std::cout << ncol << " " << nlay << " " << ngas << " " << nflav << " " << neta << " " << npres << " " << ntemp << " " << tmin << std::endl;
+	std::cout << press_ref_log_delta << " " << temp_ref_min << " " << temp_ref_delta << " " << press_ref_trop_log << std::endl;
+
+	std::cout << "Dumping interpolation_kernel() fields" << std::endl;
+	flavor.dump("flavor");
+	press_ref_log.dump("press_ref_log");
+	temp_ref.dump("temp_ref");
+	vmr_ref.dump("vmr_ref");
+
         interpolation_kernel<<<grid_gpu, block_gpu>>>(
                 ncol, nlay, ngas, nflav, neta, npres, ntemp, tmin,
                 flavor.ptr(), press_ref_log.ptr(), temp_ref.ptr(),
@@ -109,7 +119,6 @@ namespace rrtmgp_kernel_launcher_cuda
                 col_gas.ptr(), jtemp.ptr(), fmajor.ptr(),
                 fminor.ptr(), col_mix.ptr(), tropo.ptr(),
                 jeta.ptr(), jpress.ptr());
-
     }
 
     template<typename TF>
