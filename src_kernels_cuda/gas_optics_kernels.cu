@@ -76,10 +76,12 @@ void reorder12x21_kernel(
 {
     const int ii = blockIdx.x*blockDim.x + threadIdx.x;
     const int ij = blockIdx.y*blockDim.y + threadIdx.y;
+
     if ( (ii < ni) && (ij < nj) )
     {
         const int idx_out = ii + ij*ni;
         const int idx_in = ij + ii*nj;
+
         arr_out[idx_out] = arr_in[idx_in];
     }
 }
@@ -93,10 +95,12 @@ void reorder123x321_kernel(
     const int ii = blockIdx.x*blockDim.x + threadIdx.x;
     const int ij = blockIdx.y*blockDim.y + threadIdx.y;
     const int ik = blockIdx.z*blockDim.z + threadIdx.z;
+
     if ( (ii < ni) && (ij < nj) && (ik < nk))
     {
         const int idx_out = ii + ij*ni + ik*nj*ni;
-        const int idx_in = ik + ij*nk + ii*nj*nk;
+        const int idx_in  = ik + ij*nk + ii*nj*nk;
+
         arr_out[idx_out] = arr_in[idx_in];
     }
 }
@@ -212,19 +216,19 @@ void interpolation_kernel(
         const TF* __restrict__ vmr_ref,
         const TF* __restrict__ play,
         const TF* __restrict__ tlay,
-        const TF* __restrict__ col_gas,
+        TF* __restrict__ col_gas,
         int* __restrict__ jtemp,
-        TF* __restrict__ fmajor,
-        TF* __restrict__ fminor,
+        TF* __restrict__ fmajor, TF* __restrict__ fminor,
         TF* __restrict__ col_mix,
         BOOL_TYPE* __restrict__ tropo,
         int* __restrict__ jeta,
         int* __restrict__ jpress)
 {
-    const int ilay = blockIdx.x*blockDim.x + threadIdx.x;
-    const int icol = blockIdx.y*blockDim.y + threadIdx.y;
+    const int iflav = blockIdx.x*blockDim.x + threadIdx.x;
+    const int icol  = blockIdx.y*blockDim.y + threadIdx.y;
+    const int ilay  = blockIdx.z*blockDim.z + threadIdx.z;
 
-    if ( (icol < ncol) && (ilay < nlay) )
+    if ( (icol < ncol) && (ilay < nlay) && (iflav < nflav) )
     {
         const int idx = icol + ilay*ncol;
 
@@ -239,43 +243,40 @@ void interpolation_kernel(
         tropo[idx] = log(play[idx]) > press_ref_trop_log;
         const int itropo = !tropo[idx];
 
-        for (int iflav=0; iflav<nflav; ++iflav)
+        const int gas1 = flavor[2*iflav];
+        const int gas2 = flavor[2*iflav+1];
+        for (int itemp=0; itemp<2; ++itemp)
         {
-            const int gas1 = flavor[2*iflav];
-            const int gas2 = flavor[2*iflav+1];
-            for (int itemp=0; itemp<2; ++itemp)
-            {
-                const int vmr_base_idx = itropo + (jtemp[idx]+itemp-1) * (ngas+1) * 2;
-                const int colmix_idx = itemp + 2*(iflav + nflav*icol + nflav*ncol*ilay);
-                const int colgas1_idx = icol + ilay*ncol + gas1*nlay*ncol;
-                const int colgas2_idx = icol + ilay*ncol + gas2*nlay*ncol;
-                TF eta;
-                const TF ratio_eta_half = vmr_ref[vmr_base_idx + 2 * gas1] /
-                                          vmr_ref[vmr_base_idx + 2 * gas2];
-                col_mix[colmix_idx] = col_gas[colgas1_idx] + ratio_eta_half * col_gas[colgas2_idx];
+            const int vmr_base_idx = itropo + (jtemp[idx]+itemp-1) * (ngas+1) * 2;
+            const int colmix_idx = itemp + 2*(iflav + nflav*icol + nflav*ncol*ilay);
+            const int colgas1_idx = icol + ilay*ncol + gas1*nlay*ncol;
+            const int colgas2_idx = icol + ilay*ncol + gas2*nlay*ncol;
+            const TF ratio_eta_half = vmr_ref[vmr_base_idx + 2 * gas1] /
+                                      vmr_ref[vmr_base_idx + 2 * gas2];
+            col_mix[colmix_idx] = col_gas[colgas1_idx] + ratio_eta_half * col_gas[colgas2_idx];
 
-                if (col_mix[colmix_idx] > TF(2.)*tmin)
-                    eta = col_gas[colgas1_idx] / col_mix[colmix_idx];
-                else
-                    eta = TF(0.5);
+            TF eta;
+            if (col_mix[colmix_idx] > TF(2.)*tmin)
+                eta = col_gas[colgas1_idx] / col_mix[colmix_idx];
+            else
+                eta = TF(0.5);
 
-                const TF loceta = eta * TF(neta-1);
-                jeta[colmix_idx] = min(int(loceta)+1, neta-1);
-                const TF feta = fmod(loceta, TF(1.));
-                const TF ftemp_term  = TF(1-itemp) + TF(2*itemp-1)*ftemp;
+            const TF loceta = eta * TF(neta-1);
+            jeta[colmix_idx] = min(int(loceta)+1, neta-1);
+            const TF feta = fmod(loceta, TF(1.));
+            const TF ftemp_term  = TF(1-itemp) + TF(2*itemp-1)*ftemp;
 
-                // compute interpolation fractions needed for minot species
-                const int fminor_idx = 2*(itemp + 2*(iflav + icol*nflav + ilay*ncol*nflav));
-                fminor[fminor_idx] = (TF(1.0)-feta) * ftemp_term;
-                fminor[fminor_idx+1] = feta * ftemp_term;
+            // Compute interpolation fractions needed for minot species.
+            const int fminor_idx = 2*(itemp + 2*(iflav + icol*nflav + ilay*ncol*nflav));
+            fminor[fminor_idx] = (TF(1.0)-feta) * ftemp_term;
+            fminor[fminor_idx+1] = feta * ftemp_term;
 
-                // compute interpolation fractions needed for major species
-                const int fmajor_idx = 2*2*(itemp + 2*(iflav + icol*nflav + ilay*ncol*nflav));
-                fmajor[fmajor_idx] = (TF(1.0)-fpress) * fminor[fminor_idx];
-                fmajor[fmajor_idx+1] = (TF(1.0)-fpress) * fminor[fminor_idx+1];
-                fmajor[fmajor_idx+2] = fpress * fminor[fminor_idx];
-                fmajor[fmajor_idx+3] = fpress * fminor[fminor_idx+1];
-            }
+            // Compute interpolation fractions needed for major species.
+            const int fmajor_idx = 2*2*(itemp + 2*(iflav + icol*nflav + ilay*ncol*nflav));
+            fmajor[fmajor_idx] = (TF(1.0)-fpress) * fminor[fminor_idx];
+            fmajor[fmajor_idx+1] = (TF(1.0)-fpress) * fminor[fminor_idx+1];
+            fmajor[fmajor_idx+2] = fpress * fminor[fminor_idx];
+            fmajor[fmajor_idx+3] = fpress * fminor[fminor_idx+1];
         }
     }
 }
@@ -365,7 +366,6 @@ void compute_tau_minor_absorption_kernel(
     const int icol = blockIdx.y * blockDim.y + threadIdx.y;
     const TF PaTohPa = 0.01;
     const int ncl = ncol * nlay;
-
     if ((icol < ncol) && (ilay < nlay))
     {
         //kernel implementation
