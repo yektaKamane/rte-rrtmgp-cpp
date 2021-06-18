@@ -167,9 +167,9 @@ namespace rrtmgp_kernel_launcher_cuda
         TF* k = Tools_gpu::allocate_gpu<TF>(ncol*nlay*ngpt);
 
         // Call the kernel.
-        const int block_bnd = 14;
+        const int block_bnd = 1;
         const int block_lay = 1;
-        const int block_col = 32;
+        const int block_col = 8;
 
         const int grid_bnd = nbnd/block_bnd + (nbnd%block_bnd > 0);
         const int grid_lay = nlay/block_lay + (nlay%block_lay > 0);
@@ -258,8 +258,8 @@ namespace rrtmgp_kernel_launcher_cuda
         const int grid_lay_maj = nlay/block_lay_maj + (nlay%block_lay_maj > 0);
         const int grid_col_maj = ncol/block_col_maj + (ncol%block_col_maj > 0);
 
-        dim3 grid_gpu_maj(grid_bnd_maj, grid_lay_maj, grid_col_maj);
-        dim3 block_gpu_maj(block_bnd_maj, block_lay_maj, block_col_maj);
+        dim3 grid_gpu_maj(grid_col_maj, grid_lay_maj, grid_bnd_maj);
+        dim3 block_gpu_maj(block_col_maj, block_lay_maj, block_bnd_maj);
 
 	if (!dumped_lw)
 	{
@@ -294,8 +294,8 @@ namespace rrtmgp_kernel_launcher_cuda
         const int grid_lay_min  = nlay/block_lay_min + (nlay%block_lay_min > 0);
         const int grid_col_min  = ncol/block_col_min + (ncol%block_col_min > 0);
 
-        dim3 grid_gpu_min(grid_lay_min, grid_col_min);
-        dim3 block_gpu_min(block_lay_min, block_col_min);
+        dim3 grid_gpu_min(grid_col_min, grid_lay_min);
+        dim3 block_gpu_min(block_col_min, block_lay_min);
 
 	if (!dumped_lw)
 	{
@@ -455,7 +455,7 @@ template void rrtmgp_kernel_launcher_cuda::compute_tau_rayleigh<float>(
         const Array_gpu<int,2>&, Array_gpu<float,3>&);
 
 template void rrtmgp_kernel_launcher_cuda::compute_tau_absorption<float>(const int, const int, const int, const int, const int, const int,
-	const int, const int, const int, const int, const int, const int, const int, const int,
+        const int, const int, const int, const int, const int, const int, const int, const int,
         const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<float,4>&, const Array_gpu<float,3>&, const Array_gpu<float,3>&,
         const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&,
         const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&,
@@ -498,7 +498,7 @@ template void rrtmgp_kernel_launcher_cuda::compute_tau_rayleigh<double>(
         const Array_gpu<int,2>&, Array_gpu<double,3>&);
 
 template void rrtmgp_kernel_launcher_cuda::compute_tau_absorption<double>(const int, const int, const int, const int, const int, const int,
-	const int, const int, const int, const int, const int, const int, const int, const int,
+        const int, const int, const int, const int, const int, const int, const int, const int,
         const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<double,4>&, const Array_gpu<double,3>&, const Array_gpu<double,3>&,
         const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&,
         const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&,

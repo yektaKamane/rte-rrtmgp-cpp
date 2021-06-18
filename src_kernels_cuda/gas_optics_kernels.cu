@@ -27,6 +27,8 @@ void interpolate2D_byflav_kernel(const TF* __restrict__ fminor,
     const int band_gpt = gpt_end-gpt_start;
     const int j0 = jeta[0];
     const int j1 = jeta[1];
+
+    #pragma unroll
     for (int igpt=0; igpt<band_gpt; ++igpt)
     {
         k[igpt] = fminor[0] * kin[igpt + (j0-1)*ngpt + (jtemp-1)*neta*ngpt] +
@@ -53,6 +55,8 @@ void interpolate3D_byflav_kernel(const TF* __restrict__ scaling,
     const int band_gpt = gpt_end-gpt_start;
     const int j0 = jeta[0];
     const int j1 = jeta[1];
+
+    #pragma unroll
     for (int igpt=0; igpt<band_gpt; ++igpt)
     {
         tau_major[igpt] = scaling[0]*
@@ -295,9 +299,9 @@ void compute_tau_major_absorption_kernel(
         TF* __restrict__ tau, TF* __restrict__ tau_major)
 {
     // Fetch the three coordinates.
-    const int ibnd = blockIdx.x*blockDim.x + threadIdx.x;
-    const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
-    const int icol = blockIdx.z*blockDim.z + threadIdx.z;
+    const int ibnd = (blockIdx.z * blockDim.z) + threadIdx.z;
+    const int ilay = (blockIdx.y * blockDim.y) + threadIdx.y;
+    const int icol = (blockIdx.x * blockDim.x) + threadIdx.x;
 
     if ( (icol < ncol) && (ilay < nlay) && (ibnd < nband) ) {
         const int idx_collay = icol + ilay * ncol;
@@ -316,6 +320,7 @@ void compute_tau_major_absorption_kernel(
                                     jpress[idx_collay]+itropo, ngpt, neta, npres+1,
                                     &tau_major[idx_tau]);
 
+        #pragma unroll
         for (int igpt=gpt_start; igpt<gpt_end; ++igpt)
         {
             const int idx_out = igpt + ilay*ngpt + icol*nlay*ngpt;
@@ -362,96 +367,63 @@ void compute_tau_minor_absorption_kernel(
         TF* __restrict__ tau_minor)
 {
     // Fetch the three coordinates.
-    const int ilay = blockIdx.x * blockDim.x + threadIdx.x;
-    const int icol = blockIdx.y * blockDim.y + threadIdx.y;
+    const int ilay = (blockIdx.y * blockDim.y) + threadIdx.y;
+    const int icol = (blockIdx.x * blockDim.x) + threadIdx.x;
     const TF PaTohPa = 0.01;
     const int ncl = ncol * nlay;
-    if ((icol < ncol) && (ilay < nlay))
+
+    if ( (icol < ncol) && (ilay < nlay) )
     {
         //kernel implementation
-        const int idx_collay = icol + ilay * ncol;
-        const int idx_collaywv = icol + ilay * ncol + idx_h2o * ncl;
+        const int idx_collay = (ilay * ncol) + icol;
+        const int idx_collaywv = (idx_h2o * ncl) + (ilay * ncol) + icol;
 
-        if (tropo[idx_collay] == 1)
+        for ( int imnr = 0; imnr < (tropo[idx_collay] == 1 ? nscale_lower : nscale_upper); ++imnr )
         {
-            for (int imnr = 0; imnr < nscale_lower; ++imnr)
+            const int idx_minor = (tropo[idx_collay] == 1 ? idx_minor_lower[imnr] : idx_minor_upper[imnr]);
+            const int idx_minor_scaling = (tropo[idx_collay] == 1 ? idx_minor_scaling_lower[imnr] : idx_minor_scaling_upper[imnr]);
+            const BOOL_TYPE minor_scales_with_density = (tropo[idx_collay] == 1 ? minor_scales_with_density_lower[imnr] : minor_scales_with_density_upper[imnr]);
+            const BOOL_TYPE scale_by_complement = (tropo[idx_collay] == 1 ? scale_by_complement_lower[imnr] : scale_by_complement_upper[imnr]);
+            TF scaling = col_gas[(idx_minor * ncl) + idx_collay];
+            
+            if ( minor_scales_with_density )
             {
-                TF scaling = col_gas[idx_collay + idx_minor_lower[imnr] * ncl];
-                if (minor_scales_with_density_lower[imnr])
+                scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
+                if ( idx_minor_scaling > 0 )
                 {
-                    scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
-                    if (idx_minor_scaling_lower[imnr] > 0)
+                    TF vmr_fact = TF(1.) / col_gas[idx_collay];
+                    TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
+                    if ( scale_by_complement )
                     {
-                        TF vmr_fact = TF(1.) / col_gas[idx_collay];
-                        TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
-                        if (scale_by_complement_lower[imnr])
-                        {
-                            scaling *= (TF(1.) - col_gas[idx_collay + idx_minor_scaling_lower[imnr] * ncl] * vmr_fact * dry_fact);
-                        }
-                        else
-                        {
-                            scaling *= col_gas[idx_collay + idx_minor_scaling_lower[imnr] * ncl] * vmr_fact * dry_fact;
-                        }
+                        scaling *= (TF(1.) - col_gas[(idx_minor_scaling * ncl) + idx_collay] * vmr_fact * dry_fact);
                     }
-                }
-                const int gpt_start = minor_limits_gpt_lower[2*imnr]-1;
-                const int gpt_end = minor_limits_gpt_lower[2*imnr+1];
-                const int iflav = gpoint_flavor[2*gpt_start]-1;
-                const int idx_fcl2 = 2 * 2 * (iflav + icol * nflav + ilay * ncol * nflav);
-                const int idx_fcl1 = 2 * (iflav + icol * nflav + ilay * ncol * nflav);
-                const int idx_tau = gpt_start + ilay*ngpt + icol*nlay*ngpt;
-
-                interpolate2D_byflav_kernel(&fminor[idx_fcl2], &kminor_lower[kminor_start_lower[imnr]-1],
-                                            kminor_start_lower[imnr]-1, kminor_start_lower[imnr]-1 + (gpt_end - gpt_start),
-                                            &tau_minor[idx_tau], &jeta[idx_fcl1],
-                                            jtemp[idx_collay], nminork_lower, neta);
-
-                for (int igpt = gpt_start; igpt < gpt_end; ++igpt)
-                {
-                    const int idx_out = igpt + ilay * ngpt + icol * nlay * ngpt;
-                    tau[idx_out] += tau_minor[idx_out] * scaling;
+                    else
+                    {
+                        scaling *= col_gas[(idx_minor_scaling * ncl) + idx_collay] * vmr_fact * dry_fact;
+                    }
                 }
             }
-        }
-        else
-        {
-            for (int imnr = 0; imnr < nscale_upper; ++imnr)
+            
+            const int gpt_start = (tropo[idx_collay] == 1 ? minor_limits_gpt_lower[2 * imnr] - 1 : minor_limits_gpt_upper[2 * imnr] - 1);
+            const int gpt_end = (tropo[idx_collay] == 1 ?  minor_limits_gpt_lower[(2 * imnr) + 1] : minor_limits_gpt_upper[(2 * imnr) + 1]);
+            const int iflav = (tropo[idx_collay] == 1 ? gpoint_flavor[2 * gpt_start] - 1 : gpoint_flavor[(2 * gpt_start) + 1] - 1);
+            const int idx_fcl2 = 2 * 2 * (iflav + icol * nflav + ilay * ncol * nflav);
+            const int idx_fcl1 = 2 * (iflav + icol * nflav + ilay * ncol * nflav);
+            const int idx_tau = (icol * nlay * ngpt) + (ilay * ngpt) + gpt_start;
+
+            if ( tropo[idx_collay] == 1 )
             {
-                TF scaling = col_gas[idx_collay + idx_minor_upper[imnr] * ncl];
-                if (minor_scales_with_density_upper[imnr])
-                {
-                    scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
-                    if (idx_minor_scaling_upper[imnr] > 0)
-                    {
-                        TF vmr_fact = TF(1.) / col_gas[idx_collay];
-                        TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
-                        if (scale_by_complement_upper[imnr])
-                        {
-                            scaling *= (TF(1.) - col_gas[idx_collay + idx_minor_scaling_upper[imnr] * ncl] * vmr_fact * dry_fact);
-                        }
-                        else
-                        {
-                            scaling *= col_gas[idx_collay + idx_minor_scaling_upper[imnr] * ncl] * vmr_fact * dry_fact;
-                        }
-                    }
-                }
-                const int gpt_start = minor_limits_gpt_upper[2*imnr]-1;
-                const int gpt_end = minor_limits_gpt_upper[2*imnr+1];
-                const int iflav = gpoint_flavor[2*gpt_start+1]-1;
-                const int idx_fcl2 = 2 * 2 * (iflav + icol * nflav + ilay * ncol * nflav);
-                const int idx_fcl1 = 2 * (iflav + icol * nflav + ilay * ncol * nflav);
-                const int idx_tau = gpt_start + ilay*ngpt + icol*nlay*ngpt;
-
-                interpolate2D_byflav_kernel(&fminor[idx_fcl2], &kminor_upper[kminor_start_upper[imnr]-1],
-                                            kminor_start_upper[imnr]-1, kminor_start_upper[imnr]-1 + (gpt_end - gpt_start),
-                                            &tau_minor[idx_tau], &jeta[idx_fcl1],
-                                            jtemp[idx_collay], nminork_upper, neta);
-
-                for (int igpt = gpt_start; igpt < gpt_end; ++igpt)
-                {
-                    const int idx_out = igpt + ilay * ngpt + icol * nlay * ngpt;
-                    tau[idx_out] += tau_minor[idx_out] * scaling;
-                }
+                interpolate2D_byflav_kernel(&fminor[idx_fcl2], &kminor_lower[kminor_start_lower[imnr]-1], kminor_start_lower[imnr]-1, kminor_start_lower[imnr]-1 + (gpt_end - gpt_start), &tau_minor[idx_tau], &jeta[idx_fcl1], jtemp[idx_collay], nminork_lower, neta);
+            }
+            else
+            {
+                interpolate2D_byflav_kernel(&fminor[idx_fcl2], &kminor_upper[kminor_start_upper[imnr]-1], kminor_start_upper[imnr]-1, kminor_start_upper[imnr]-1 + (gpt_end - gpt_start), &tau_minor[idx_tau], &jeta[idx_fcl1], jtemp[idx_collay], nminork_upper, neta);
+            }
+            #pragma unroll
+            for ( int igpt = gpt_start; igpt < gpt_end; ++igpt )
+            {
+                const int idx_out = igpt + ilay * ngpt + icol * nlay * ngpt;
+                tau[idx_out] += tau_minor[idx_out] * scaling;
             }
         }
     }
