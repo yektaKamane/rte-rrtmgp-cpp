@@ -343,6 +343,9 @@ namespace rrtmgp_kernel_launcher_cuda
                 fminor.ptr(), jeta.ptr(), jtemp.ptr(),
                 tropo.ptr(), tau.ptr(), tau_minor);
 
+        if (!dumped_lw)
+            tau.dump("tau_after_minor_tropo_one");
+
         // Upper
         idx_tropo = 0;
 
