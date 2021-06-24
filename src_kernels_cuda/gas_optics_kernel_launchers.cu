@@ -4,6 +4,7 @@
 #include "tools_gpu.h"
 #include "Array.h"
 
+
 namespace
 {
     #include "gas_optics_kernels.cu"
@@ -250,9 +251,9 @@ namespace rrtmgp_kernel_launcher_cuda
         TF* tau_major = Tools_gpu::allocate_gpu<TF>(tau.size());
         TF* tau_minor = Tools_gpu::allocate_gpu<TF>(tau.size());
 
-        const int block_bnd_maj = 11;  // 14
+        const int block_bnd_maj = 2;  // 14
         const int block_lay_maj = 1;   // 1
-        const int block_col_maj = 3;   // 32
+        const int block_col_maj = 2;   // 32
 
         const int grid_bnd_maj = nband/block_bnd_maj + (nband%block_bnd_maj > 0);
         const int grid_lay_maj = nlay/block_lay_maj + (nlay%block_lay_maj > 0);
@@ -288,15 +289,6 @@ namespace rrtmgp_kernel_launcher_cuda
         const int nscale_lower = scale_by_complement_lower.dim(1);
         const int nscale_upper = scale_by_complement_upper.dim(1);
 
-        const int block_lay_min = 1;  // 32;
-        const int block_col_min = 3;  // 32;
-
-        const int grid_lay_min  = nlay/block_lay_min + (nlay%block_lay_min > 0);
-        const int grid_col_min  = ncol/block_col_min + (ncol%block_col_min > 0);
-
-        dim3 grid_gpu_min(grid_col_min, grid_lay_min);
-        dim3 block_gpu_min(block_col_min, block_lay_min);
-
 	if (!dumped_lw)
 	{
             std::cout << "Dumping compute_tau_... fields" << std::endl;
@@ -320,21 +312,64 @@ namespace rrtmgp_kernel_launcher_cuda
             fminor.dump("fminor");
 	}
 
-        compute_tau_minor_absorption_kernel<<<grid_gpu_min, block_gpu_min>>>(
+        // Lower
+        int idx_tropo = 1;
+
+        const int block_col_min_1 = 8;
+        const int block_lay_min_1 = 2;
+
+        const int grid_col_min_1  = ncol/block_col_min_1 + (ncol%block_col_min_1 > 0);
+        const int grid_lay_min_1  = nlay/block_lay_min_1 + (nlay%block_lay_min_1 > 0);
+
+        dim3 grid_gpu_min_1(grid_col_min_1, grid_lay_min_1);
+        dim3 block_gpu_min_1(block_col_min_1, block_lay_min_1);
+
+        compute_tau_minor_absorption_kernel<<<grid_gpu_min_1, block_gpu_min_1>>>(
                 ncol, nlay, ngpt,
                 ngas, nflav, ntemp, neta,
-                nscale_lower, nscale_upper,
-                nminorlower, nminorupper,
-                nminorklower,nminorkupper,
-                idx_h2o,
+                nscale_lower,
+                nminorlower,
+                nminorklower,
+                idx_h2o, idx_tropo,
                 gpoint_flavor.ptr(),
-                kminor_lower.ptr(), kminor_upper.ptr(),
-                minor_limits_gpt_lower.ptr(), minor_limits_gpt_upper.ptr(),
-                minor_scales_with_density_lower.ptr(), minor_scales_with_density_upper.ptr(),
-                scale_by_complement_lower.ptr(), scale_by_complement_upper.ptr(),
-                idx_minor_lower.ptr(), idx_minor_upper.ptr(),
-                idx_minor_scaling_lower.ptr(), idx_minor_scaling_upper.ptr(),
-                kminor_start_lower.ptr(), kminor_start_upper.ptr(),
+                kminor_lower.ptr(),
+                minor_limits_gpt_lower.ptr(),
+                minor_scales_with_density_lower.ptr(),
+                scale_by_complement_lower.ptr(),
+                idx_minor_lower.ptr(),
+                idx_minor_scaling_lower.ptr(),
+                kminor_start_lower.ptr(),
+                play.ptr(), tlay.ptr(), col_gas.ptr(),
+                fminor.ptr(), jeta.ptr(), jtemp.ptr(),
+                tropo.ptr(), tau.ptr(), tau_minor);
+
+        // Upper
+        idx_tropo = 0;
+
+        const int block_col_min_2 = 1;
+        const int block_lay_min_2 = 4;
+
+        const int grid_col_min_2  = ncol/block_col_min_2 + (ncol%block_col_min_2 > 0);
+        const int grid_lay_min_2  = nlay/block_lay_min_2 + (nlay%block_lay_min_2 > 0);
+
+        dim3 grid_gpu_min_2(grid_col_min_2, grid_lay_min_2);
+        dim3 block_gpu_min_2(block_col_min_2, block_lay_min_2);
+
+        compute_tau_minor_absorption_kernel<<<grid_gpu_min_2, block_gpu_min_2>>>(
+                ncol, nlay, ngpt,
+                ngas, nflav, ntemp, neta,
+                nscale_upper,
+                nminorupper,
+                nminorkupper,
+                idx_h2o, idx_tropo,
+                gpoint_flavor.ptr(),
+                kminor_upper.ptr(),
+                minor_limits_gpt_upper.ptr(),
+                minor_scales_with_density_upper.ptr(),
+                scale_by_complement_upper.ptr(),
+                idx_minor_upper.ptr(),
+                idx_minor_scaling_upper.ptr(),
+                kminor_start_upper.ptr(),
                 play.ptr(), tlay.ptr(), col_gas.ptr(),
                 fminor.ptr(), jeta.ptr(), jtemp.ptr(),
                 tropo.ptr(), tau.ptr(), tau_minor);
