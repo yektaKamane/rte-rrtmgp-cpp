@@ -227,10 +227,10 @@ namespace rrtmgp_kernel_launcher_cuda
     template<typename TF>
     struct Gas_optical_depths_major_kernel
     {
-        template<int I, int J, int K, class... Args>
+        template<int I, int J, class... Args>
         static void launch(dim3 grid, dim3 block, Args... args)
         {
-            gas_optical_depths_major_kernel<TF, I, J, K><<<grid, block>>>(args...);
+            gas_optical_depths_major_kernel<TF, I, J><<<grid, block>>>(args...);
         }
     };
 
@@ -277,19 +277,27 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,3>& tau,
             Tuner_map& tunings)
     {
-        dim3 grid_gpu_maj{ngpt, nlay, ncol}, block_gpu_maj;
+        const int igpt=0;
+        
+        const int block_lay = 4;
+        const int block_col = 4;
 
+        const int grid_lay = nlay/block_lay + (nlay%block_lay > 0);
+        const int grid_col = ncol/block_col + (ncol%block_col > 0);
+
+        dim3 grid_gpu_maj(grid_lay, grid_col, 1);
+        dim3 block_gpu_maj(block_lay, block_col, 1);
+        
+        //dim3 grid_gpu_maj{1, nlay, ncol}, block_gpu_maj;
         if (tunings.count("gas_optical_depths_major_kernel") == 0)
         {
-            std::tie(grid_gpu_maj, block_gpu_maj) =
-                tune_kernel_compile_time<Gas_optical_depths_major_kernel<TF>>(
+            std::tie(grid_gpu_maj, block_gpu_maj) = tune_kernel(
                     "gas_optical_depths_major_kernel",
-                    {ngpt, nlay, ncol},
-                    std::integer_sequence<int, 1, 2, 4, 8, 16, 24, 32, 48, 64>{},
-                    std::integer_sequence<int, 1, 2, 4>{},
-                    std::integer_sequence<int, 8, 16, 24, 32, 48, 64, 96, 128, 256>{},
+                    {nlay, ncol, 1}, {1, 2, 4, 8, 16}, {8, 16, 24, 32, 48, 64, 96, 128, 256}, {1},
+                    gas_optical_depths_major_kernel<TF>,
                     ncol, nlay, nband, ngpt,
                     nflav, neta, npres, ntemp,
+                    1,
                     gpoint_flavor.ptr(), band_lims_gpt.ptr(),
                     kmajor.ptr(), col_mix.ptr(), fmajor.ptr(), jeta.ptr(),
                     tropo.ptr(), jtemp.ptr(), jpress.ptr(),
@@ -303,19 +311,17 @@ namespace rrtmgp_kernel_launcher_cuda
             grid_gpu_maj = tunings["gas_optical_depths_major_kernel"].first;
             block_gpu_maj = tunings["gas_optical_depths_major_kernel"].second;
         }
-
-        run_kernel_compile_time<Gas_optical_depths_major_kernel<TF>>(
-                std::integer_sequence<int, 1, 2, 4, 8, 16, 24, 32, 48, 64>{},
-                std::integer_sequence<int, 1, 2, 4>{},
-                std::integer_sequence<int, 8, 16, 24, 32, 48, 64, 96, 128, 256>{},
-                grid_gpu_maj, block_gpu_maj,
-                ncol, nlay, nband, ngpt,
-                nflav, neta, npres, ntemp,
-                gpoint_flavor.ptr(), band_lims_gpt.ptr(),
-                kmajor.ptr(), col_mix.ptr(), fmajor.ptr(), jeta.ptr(),
-                tropo.ptr(), jtemp.ptr(), jpress.ptr(),
-                tau.ptr());
-
+        for (int igpt=0; igpt<ngpt; ++igpt)
+        {
+            gas_optical_depths_major_kernel<<<grid_gpu_maj, block_gpu_maj>>>(
+                    ncol, nlay, nband, ngpt,
+                    nflav, neta, npres, ntemp,
+                    igpt,
+                    gpoint_flavor.ptr(), band_lims_gpt.ptr(),
+                    kmajor.ptr(), col_mix.ptr(), fmajor.ptr(), jeta.ptr(),
+                    tropo.ptr(), jtemp.ptr(), jpress.ptr(),
+                    tau.ptr());
+        }
         const int nscale_lower = scale_by_complement_lower.dim(1);
         const int nscale_upper = scale_by_complement_upper.dim(1);
 
