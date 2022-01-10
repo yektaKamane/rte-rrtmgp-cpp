@@ -342,6 +342,61 @@ void gas_optical_depths_major_kernel(
 }
 
 template<typename TF> __global__
+void scaling_kernel(
+        const int ncol, const int nlay, const int nflav, const int nminor,
+        const int idx_h2o, const int idx_tropo,
+        const int* __restrict__ gpoint_flavor,
+        const int* __restrict__ minor_limits_gpt,
+        const BOOL_TYPE* __restrict__ minor_scales_with_density,
+        const BOOL_TYPE* __restrict__ scale_by_complement,
+        const int* __restrict__ idx_minor,
+        const int* __restrict__ idx_minor_scaling,
+        const TF* __restrict__ play,
+        const TF* __restrict__ tlay,
+        const TF* __restrict__ col_gas,
+        const BOOL_TYPE* __restrict__ tropo,
+        TF* __restrict__ scalings)
+{
+    const int icol = blockIdx.x * blockDim.x + threadIdx.x;
+    const int ilay = blockIdx.y * blockDim.y + threadIdx.y;
+    const int imnr = blockIdx.z * blockDim.z + threadIdx.z;
+
+    if ( (icol < ncol) && (ilay < nlay) && (imnr < nminor) )
+    {
+        const int idx_collay = icol + ilay*ncol;
+        if ((tropo[idx_collay] == idx_tropo) )
+        {
+            const int gpt_offs = 1-idx_tropo;
+
+            const int idx_out = icol + ilay*ncol + imnr*ncol*nlay;
+            const int ncl = ncol * nlay;
+            
+            TF scaling = col_gas[idx_collay + idx_minor[imnr] * ncl];
+
+            if (minor_scales_with_density[imnr])
+            {
+                const TF PaTohPa = 0.01;
+                scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
+
+                if (idx_minor_scaling[imnr] > 0)
+                {
+                    const int idx_collaywv = icol + ilay*ncol + idx_h2o*ncl;
+                    TF vmr_fact = TF(1.) / col_gas[idx_collay];
+                    TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
+
+                    if (scale_by_complement[imnr])
+                        scaling *= (TF(1.) - col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact);
+                    else
+                        scaling *= col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact;
+                }
+            }
+            if (icol==0 && ilay==0) printf("XX %d %d %f \n",imnr,idx_out,scaling);
+            scalings[idx_out] = scaling;
+        }
+    }
+}
+
+template<typename TF> __global__
 void gas_optical_depths_minor_kernel(
         const int ncol, const int nlay, const int ngpt, const int igpt,
         const int ngas, const int nflav, const int ntemp, const int neta,
@@ -365,6 +420,7 @@ void gas_optical_depths_minor_kernel(
         const int* __restrict__ jeta,
         const int* __restrict__ jtemp,
         const BOOL_TYPE* __restrict__ tropo,
+        const TF* __restrict__ scalings,
         TF* __restrict__ tau)
 {
     const int ilay = blockIdx.x * blockDim.x + threadIdx.x;
@@ -392,29 +448,10 @@ void gas_optical_depths_minor_kernel(
             const int j1 = jeta[idx_fcl1+1];
             const int kjtemp = jtemp[idx_collay];
 
-            const int idx_out = icol + ilay*ncol + (igpt)*ncol*nlay;
+            const int idx_out = icol + ilay*ncol + igpt*ncol*nlay;
             for (int imnr=minor_start; imnr<=minor_end; ++imnr)
             {
-                const int ncl = ncol * nlay;
-                TF scaling = col_gas[idx_collay + idx_minor[imnr] * ncl];
-
-                if (minor_scales_with_density[imnr])
-                {
-                    const TF PaTohPa = 0.01;
-                    scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
-
-                    if (idx_minor_scaling[imnr] > 0)
-                    {
-                        const int idx_collaywv = icol + ilay*ncol + idx_h2o*ncl;
-                        TF vmr_fact = TF(1.) / col_gas[idx_collay];
-                        TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
-
-                        if (scale_by_complement[imnr])
-                            scaling *= (TF(1.) - col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact);
-                        else
-                            scaling *= col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact;
-                    }
-                }
+                const int idx_scl = icol + ilay*ncol + imnr*ncol*nlay;
 
                 const int start_of_band = minor_limits_gpt[2*imnr]-1;
                 const int gpt_offset = kminor_start[imnr]-1;
@@ -424,7 +461,7 @@ void gas_optical_depths_minor_kernel(
                                 kfminor[2] * kin[kjtemp     + (j1-1)*ntemp + (igpt-start_of_band+gpt_offset)*ntemp*neta] +
                                 kfminor[3] * kin[kjtemp     +  j1   *ntemp + (igpt-start_of_band+gpt_offset)*ntemp*neta];
 
-                tau[idx_out] += ltau_minor * scaling;
+                tau[idx_out] += ltau_minor * scalings[idx_scl];
             }
         }
     }

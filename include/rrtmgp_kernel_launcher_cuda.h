@@ -69,8 +69,33 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,4>& col_mix,
             Array_gpu<BOOL_TYPE,2>& tropo,
             Array_gpu<int,4>& jeta,
-            Array_gpu<int,2>& jpress);
+            Array_gpu<int,2>& jpress,
+            Tuner_map& tunings);
 
+    template<typename TF>
+    void minor_scalings(
+            const int ncol, const int nlay, const int nflav, const int ngpt, 
+            const int nminorlower, const int nminorupper,
+            const int idx_h2o,  
+            const Array_gpu<int,2> gpoint_flavor,
+            const Array_gpu<int,2> minor_limits_gpt_lower,
+            const Array_gpu<int,2> minor_limits_gpt_upper,
+            const Array_gpu<BOOL_TYPE,1> minor_scales_with_density_lower,
+            const Array_gpu<BOOL_TYPE,1> minor_scales_with_density_upper,
+            const Array_gpu<BOOL_TYPE,1> scale_by_complement_lower,
+            const Array_gpu<BOOL_TYPE,1> scale_by_complement_upper,
+            const Array_gpu<int,1> idx_minor_lower,
+            const Array_gpu<int,1> idx_minor_upper,
+            const Array_gpu<int,1> idx_minor_scaling_lower,
+            const Array_gpu<int,1> idx_minor_scaling_upper,
+            const Array_gpu<TF,2> play,
+            const Array_gpu<TF,2> tlay,
+            const Array_gpu<TF,3> col_gas,
+            const Array_gpu<BOOL_TYPE,2> tropo,
+            Array_gpu<TF,3> scalings_lower,
+            Array_gpu<TF,3> scalings_upper,
+            Tuner_map& tunings);
+    
     template<typename TF>
     void combine_abs_and_rayleigh(
             const int ncol, const int nlay, const int ngpt,
@@ -122,7 +147,10 @@ namespace rrtmgp_kernel_launcher_cuda
             const Array_gpu<TF,5>& fminor, const Array_gpu<TF,2>& play,
             const Array_gpu<TF,2>& tlay, const Array_gpu<TF,3>& col_gas,
             const Array_gpu<int,4>& jeta, const Array_gpu<int,2>& jtemp,
-            const Array_gpu<int,2>& jpress, Array_gpu<TF,3>& tau,
+            const Array_gpu<int,2>& jpress, 
+            const Array_gpu<TF,3>& scalings_lower,
+            const Array_gpu<TF,3>& scalings_upper,
+            Array_gpu<TF,3>& tau,
             Tuner_map& tunings);
 
     template<typename TF>

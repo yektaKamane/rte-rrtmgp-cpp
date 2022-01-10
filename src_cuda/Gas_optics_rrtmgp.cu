@@ -1038,7 +1038,8 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
     col_gas.set_offsets({0, 0, -1});
     Array_gpu<TF,4> col_mix({2, ncol, nlay, this->get_nflav()});
     Array_gpu<TF,5> fminor({2, 2, ncol, nlay, this->get_nflav()});
-
+    Array_gpu<TF,3> scalings_lower({ncol, nlay,  this->minor_scales_with_density_lower.dim(1)});
+    Array_gpu<TF,3> scalings_upper({ncol, nlay,  this->minor_scales_with_density_upper.dim(1)});
 
     // CvH add all the checking...
     const int ngas = this->get_ngas();
@@ -1088,8 +1089,9 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
             fmajor, fminor,
             col_mix,
             tropo,
-            jeta, jpress);
-
+            jeta, jpress,
+            compute_gas_taus_map);
+    
     int idx_h2o = -1;
     for  (int i=1; i<=this->gas_names.dim(1); ++i)
         if (gas_names({i}) == "h2o")
@@ -1100,6 +1102,30 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
 
     if (idx_h2o == -1)
         throw std::runtime_error("idx_h2o cannot be found");
+    
+    rrtmgp_kernel_launcher_cuda::minor_scalings(
+            ncol, nlay, nflav, ngpt, 
+            nminorlower, nminorupper,
+            idx_h2o,  
+            gpoint_flavor,
+            minor_limits_gpt_lower,
+            minor_limits_gpt_upper,
+            minor_scales_with_density_lower,
+            minor_scales_with_density_upper,
+            scale_by_complement_lower,
+            scale_by_complement_upper,
+            idx_minor_lower,
+            idx_minor_upper,
+            idx_minor_scaling_lower,
+            idx_minor_scaling_upper,
+            play,
+            tlay,
+            col_gas,
+            tropo,
+            scalings_lower,
+            scalings_upper,
+            compute_gas_taus_map);
+
 
     bool has_rayleigh = (this->krayl.size() > 0);
 
@@ -1141,6 +1167,8 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 col_mix, fmajor, fminor,
                 play, tlay, col_gas,
                 jeta, jtemp, jpress,
+                scalings_lower,
+                scalings_upper,
                 tau,
                 compute_gas_taus_map);
 
@@ -1191,6 +1219,8 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 col_mix, fmajor, fminor,
                 play, tlay, col_gas,
                 jeta, jtemp, jpress,
+                scalings_lower,
+                scalings_upper,
                 optical_props->get_tau(),
                 compute_gas_taus_map);
     }
