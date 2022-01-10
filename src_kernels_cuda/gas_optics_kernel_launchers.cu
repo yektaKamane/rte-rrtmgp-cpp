@@ -225,26 +225,6 @@ namespace rrtmgp_kernel_launcher_cuda
     }
 
     template<typename TF>
-    struct Gas_optical_depths_major_kernel
-    {
-        template<int I, int J, class... Args>
-        static void launch(dim3 grid, dim3 block, Args... args)
-        {
-            gas_optical_depths_major_kernel<TF, I, J><<<grid, block>>>(args...);
-        }
-    };
-
-    template<typename TF>
-    struct Gas_optical_depths_minor_kernel
-    {
-        template<int I, int J, int K, class... Args>
-        static void launch(dim3 grid, dim3 block, Args... args)
-        {
-            gas_optical_depths_minor_kernel<TF, I, J, K><<<grid, block>>>(args...);
-        }
-    };
-
-    template<typename TF>
     void compute_tau_absorption(
             const int ncol, const int nlay, const int nband, const int ngpt,
             const int ngas, const int nflav, const int neta, const int npres, const int ntemp,
@@ -258,6 +238,8 @@ namespace rrtmgp_kernel_launcher_cuda
             const Array_gpu<TF,3>& kminor_upper,
             const Array_gpu<int,2>& minor_limits_gpt_lower,
             const Array_gpu<int,2>& minor_limits_gpt_upper,
+            const Array_gpu<int,2>& first_last_minor_lower,
+            const Array_gpu<int,2>& first_last_minor_upper,
             const Array_gpu<BOOL_TYPE,1>& minor_scales_with_density_lower,
             const Array_gpu<BOOL_TYPE,1>& minor_scales_with_density_upper,
             const Array_gpu<BOOL_TYPE,1>& scale_by_complement_lower,
@@ -277,8 +259,6 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,3>& tau,
             Tuner_map& tunings)
     {
-        const int igpt=0;
-        
         const int block_lay = 4;
         const int block_col = 4;
 
@@ -287,7 +267,7 @@ namespace rrtmgp_kernel_launcher_cuda
 
         dim3 grid_gpu_maj(grid_lay, grid_col, 1);
         dim3 block_gpu_maj(block_lay, block_col, 1);
-        
+
         //dim3 grid_gpu_maj{1, nlay, ncol}, block_gpu_maj;
         if (tunings.count("gas_optical_depths_major_kernel") == 0)
         {
@@ -328,18 +308,19 @@ namespace rrtmgp_kernel_launcher_cuda
         // Lower
         int idx_tropo = 1;
 
-        dim3 grid_gpu_min_1{1, nlay, ncol}, block_gpu_min_1;
+        dim3 grid_gpu_min_1(grid_lay, grid_col, 1);
+        dim3 block_gpu_min_1(block_lay, block_col, 1);
 
         if (tunings.count("gas_optical_depths_minor_kernel_lower") == 0)
         {
-            std::tie(grid_gpu_min_1, block_gpu_min_1) =
-                tune_kernel_compile_time<Gas_optical_depths_minor_kernel<TF>>(
+            std::tie(grid_gpu_min_1, block_gpu_min_1) = tune_kernel(
                         "gas_optical_depths_minor_kernel_lower",
-                        {1, nlay, ncol},
-                        std::integer_sequence<int, 1, 2, 4, 8, 16>{},
-                        std::integer_sequence<int, 1, 2, 4>{},
-                        std::integer_sequence<int, 1, 2, 4, 8, 16, 32, 48, 64, 96, 128>{},
-                        ncol, nlay, ngpt,
+                        {nlay, ncol, 1},
+                        {1, 2, 4, 8},
+                        {1, 2, 4, 8, 16, 32, 48, 64, 96, 128},
+                        {1},
+                        gas_optical_depths_minor_kernel<TF>,
+                        ncol, nlay, ngpt, 1,
                         ngas, nflav, ntemp, neta,
                         nscale_lower,
                         nminorlower,
@@ -348,6 +329,7 @@ namespace rrtmgp_kernel_launcher_cuda
                         gpoint_flavor.ptr(),
                         kminor_lower.ptr(),
                         minor_limits_gpt_lower.ptr(),
+                        first_last_minor_lower.ptr(),
                         minor_scales_with_density_lower.ptr(),
                         scale_by_complement_lower.ptr(),
                         idx_minor_lower.ptr(),
@@ -355,7 +337,7 @@ namespace rrtmgp_kernel_launcher_cuda
                         kminor_start_lower.ptr(),
                         play.ptr(), tlay.ptr(), col_gas.ptr(),
                         fminor.ptr(), jeta.ptr(), jtemp.ptr(),
-                        tropo.ptr(), tau.ptr(), nullptr);
+                        tropo.ptr(), Array_gpu<TF,3>(tau).ptr());
 
             tunings["gas_optical_depths_minor_kernel_lower"].first = grid_gpu_min_1;
             tunings["gas_optical_depths_minor_kernel_lower"].second = block_gpu_min_1;
@@ -365,63 +347,62 @@ namespace rrtmgp_kernel_launcher_cuda
             grid_gpu_min_1 = tunings["gas_optical_depths_minor_kernel_lower"].first;
             block_gpu_min_1 = tunings["gas_optical_depths_minor_kernel_lower"].second;
         }
-
-        run_kernel_compile_time<Gas_optical_depths_minor_kernel<TF>>(
-                std::integer_sequence<int, 1, 2, 4, 8, 16>{},
-                std::integer_sequence<int, 1, 2, 4>{},
-                std::integer_sequence<int, 1, 2, 4, 8, 16, 32, 48, 64, 96, 128>{},
-                grid_gpu_min_1, block_gpu_min_1,
-                ncol, nlay, ngpt,
-                ngas, nflav, ntemp, neta,
-                nscale_lower,
-                nminorlower,
-                nminorklower,
-                idx_h2o, idx_tropo,
-                gpoint_flavor.ptr(),
-                kminor_lower.ptr(),
-                minor_limits_gpt_lower.ptr(),
-                minor_scales_with_density_lower.ptr(),
-                scale_by_complement_lower.ptr(),
-                idx_minor_lower.ptr(),
-                idx_minor_scaling_lower.ptr(),
-                kminor_start_lower.ptr(),
-                play.ptr(), tlay.ptr(), col_gas.ptr(),
-                fminor.ptr(), jeta.ptr(), jtemp.ptr(),
-                tropo.ptr(), tau.ptr(), nullptr);
-
+        for (int igpt=0; igpt<ngpt; ++igpt)
+        {
+            gas_optical_depths_minor_kernel<<<grid_gpu_min_1, block_gpu_min_1>>>(
+                    ncol, nlay, ngpt, igpt,
+                    ngas, nflav, ntemp, neta,
+                    nscale_lower,
+                    nminorlower,
+                    nminorklower,
+                    idx_h2o, idx_tropo,
+                    gpoint_flavor.ptr(),
+                    kminor_lower.ptr(),
+                    minor_limits_gpt_lower.ptr(),
+                    first_last_minor_lower.ptr(),
+                    minor_scales_with_density_lower.ptr(),
+                    scale_by_complement_lower.ptr(),
+                    idx_minor_lower.ptr(),
+                    idx_minor_scaling_lower.ptr(),
+                    kminor_start_lower.ptr(),
+                    play.ptr(), tlay.ptr(), col_gas.ptr(),
+                    fminor.ptr(), jeta.ptr(), jtemp.ptr(),
+                    tropo.ptr(), tau.ptr());
+        }
 
         // Upper
         idx_tropo = 0;
 
-        dim3 grid_gpu_min_2{ngpt, nlay, ncol}, block_gpu_min_2;
-
+        dim3 grid_gpu_min_2(grid_lay, grid_col, 1);
+        dim3 block_gpu_min_2(block_lay, block_col, 1);
 
         if (tunings.count("gas_optical_depths_minor_kernel_upper") == 0)
         {
-            std::tie(grid_gpu_min_2, block_gpu_min_2) =
-                tune_kernel_compile_time<Gas_optical_depths_minor_kernel<TF>>(
-                        "gas_optical_depths_minor_kernel_upper",
-                        {1, nlay, ncol},
-                        std::integer_sequence<int, 1, 2, 4, 8, 16>{},
-                        std::integer_sequence<int, 1, 2, 4>{},
-                        std::integer_sequence<int, 1, 2, 4, 8, 16, 32, 48, 64, 96, 128>{},
-                        ncol, nlay, ngpt,
-                        ngas, nflav, ntemp, neta,
-                        nscale_upper,
-                        nminorupper,
-                        nminorkupper,
-                        idx_h2o, idx_tropo,
-                        gpoint_flavor.ptr(),
-                        kminor_upper.ptr(),
-                        minor_limits_gpt_upper.ptr(),
-                        minor_scales_with_density_upper.ptr(),
-                        scale_by_complement_upper.ptr(),
-                        idx_minor_upper.ptr(),
-                        idx_minor_scaling_upper.ptr(),
-                        kminor_start_upper.ptr(),
-                        play.ptr(), tlay.ptr(), col_gas.ptr(),
-                        fminor.ptr(), jeta.ptr(), jtemp.ptr(),
-                        tropo.ptr(), tau.ptr(), nullptr);
+            std::tie(grid_gpu_min_2, block_gpu_min_2) = tune_kernel(
+                   "gas_optical_depths_minor_kernel_upper",
+                   {nlay, ncol, 1},
+                   {1, 2, 4, 8},
+                   {1, 2, 4, 8, 16, 32, 48, 64, 96, 128},
+                   {1},
+                   gas_optical_depths_minor_kernel<TF>,
+                   ncol, nlay, ngpt, 1,
+                   ngas, nflav, ntemp, neta,
+                   nscale_upper,
+                   nminorupper,
+                   nminorkupper,
+                   idx_h2o, idx_tropo,
+                   gpoint_flavor.ptr(),
+                   kminor_upper.ptr(),
+                   minor_limits_gpt_upper.ptr(),
+                   first_last_minor_upper.ptr(),
+                   minor_scales_with_density_upper.ptr(),
+                   scale_by_complement_upper.ptr(),
+                   idx_minor_upper.ptr(),
+                   idx_minor_scaling_upper.ptr(),
+                   kminor_start_upper.ptr(),
+                   play.ptr(), tlay.ptr(), col_gas.ptr(),
+                   fminor.ptr(), jeta.ptr(), jtemp.ptr(),
+                   tropo.ptr(), Array_gpu<TF,3>(tau).ptr());
 
             tunings["gas_optical_depths_minor_kernel_upper"].first = grid_gpu_min_2;
             tunings["gas_optical_depths_minor_kernel_upper"].second = block_gpu_min_2;
@@ -432,28 +413,28 @@ namespace rrtmgp_kernel_launcher_cuda
             block_gpu_min_2 = tunings["gas_optical_depths_minor_kernel_upper"].second;
         }
 
-        run_kernel_compile_time<Gas_optical_depths_minor_kernel<TF>>(
-                std::integer_sequence<int, 1, 2, 4, 8, 16>{},
-                std::integer_sequence<int, 1, 2, 4>{},
-                std::integer_sequence<int, 1, 2, 4, 8, 16, 32, 48, 64, 96, 128>{},
-                grid_gpu_min_2, block_gpu_min_2,
-                ncol, nlay, ngpt,
-                ngas, nflav, ntemp, neta,
-                nscale_upper,
-                nminorupper,
-                nminorkupper,
-                idx_h2o, idx_tropo,
-                gpoint_flavor.ptr(),
-                kminor_upper.ptr(),
-                minor_limits_gpt_upper.ptr(),
-                minor_scales_with_density_upper.ptr(),
-                scale_by_complement_upper.ptr(),
-                idx_minor_upper.ptr(),
-                idx_minor_scaling_upper.ptr(),
-                kminor_start_upper.ptr(),
-                play.ptr(), tlay.ptr(), col_gas.ptr(),
-                fminor.ptr(), jeta.ptr(), jtemp.ptr(),
-                tropo.ptr(), tau.ptr(), nullptr);
+        for (int igpt=0; igpt<ngpt; ++igpt)
+        {
+            gas_optical_depths_minor_kernel<<<grid_gpu_min_2, block_gpu_min_2>>>(
+                    ncol, nlay, ngpt, igpt,
+                    ngas, nflav, ntemp, neta,
+                    nscale_upper,
+                    nminorupper,
+                    nminorkupper,
+                    idx_h2o, idx_tropo,
+                    gpoint_flavor.ptr(),
+                    kminor_upper.ptr(),
+                    minor_limits_gpt_upper.ptr(),
+                    first_last_minor_upper.ptr(),
+                    minor_scales_with_density_upper.ptr(),
+                    scale_by_complement_upper.ptr(),
+                    idx_minor_upper.ptr(),
+                    idx_minor_scaling_upper.ptr(),
+                    kminor_start_upper.ptr(),
+                    play.ptr(), tlay.ptr(), col_gas.ptr(),
+                    fminor.ptr(), jeta.ptr(), jtemp.ptr(),
+                    tropo.ptr(), tau.ptr());
+        }
     }
 
 
@@ -496,7 +477,7 @@ namespace rrtmgp_kernel_launcher_cuda
 
         dim3 grid_gpu(grid_gpt, grid_lay, grid_col);
         dim3 block_gpu(block_gpt, block_lay, block_col);
-        
+
         if (tunings.count("Planck_source_kernel") == 0)
         {
             std::tie(grid_gpu, block_gpu) = tune_kernel(
@@ -567,7 +548,7 @@ template void rrtmgp_kernel_launcher_cuda::compute_tau_rayleigh<float>(
 template void rrtmgp_kernel_launcher_cuda::compute_tau_absorption<float>(const int, const int, const int, const int, const int, const int,
         const int, const int, const int, const int, const int, const int, const int, const int,
         const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<float,4>&, const Array_gpu<float,3>&, const Array_gpu<float,3>&,
-        const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&,
+        const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&,
         const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&,
         const Array_gpu<int,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&, const Array_gpu<BOOL_TYPE,2>& tropo,
         const Array_gpu<float,4>&, const Array_gpu<float,6>&, const Array_gpu<float,5>&, const Array_gpu<float,2>&, const Array_gpu<float,2>&, const Array_gpu<float,3>&,
@@ -610,7 +591,7 @@ template void rrtmgp_kernel_launcher_cuda::compute_tau_rayleigh<double>(
 template void rrtmgp_kernel_launcher_cuda::compute_tau_absorption<double>(const int, const int, const int, const int, const int, const int,
         const int, const int, const int, const int, const int, const int, const int, const int,
         const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<double,4>&, const Array_gpu<double,3>&, const Array_gpu<double,3>&,
-        const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&,
+        const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<int,2>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&,
         const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<BOOL_TYPE,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&,
         const Array_gpu<int,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&, const Array_gpu<int,1>&, const Array_gpu<BOOL_TYPE,2>& tropo,
         const Array_gpu<double,4>&, const Array_gpu<double,6>&, const Array_gpu<double,5>&, const Array_gpu<double,2>&, const Array_gpu<double,2>&, const Array_gpu<double,3>&,

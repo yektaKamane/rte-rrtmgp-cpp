@@ -390,6 +390,26 @@ namespace
                         flavor, rewritten_pair);
             }
     }
+
+    // which minor indices belong to each g-point
+    void invert_minor_gpt_limits(
+        const Array<int,2>& minor_limits_gpt,
+        Array<int,2>& first_last_minor)
+    {
+        first_last_minor.fill(-1);
+        for (int i1=1; i1<=minor_limits_gpt.dim(2); ++i1)
+        {
+            for (int i2=minor_limits_gpt({1,i1}); i2<=minor_limits_gpt({2,i1}); ++i2)
+            {
+                if (first_last_minor({1,i2}) == -1)
+                {   
+                    first_last_minor({1,i2}) = i1-1;
+                }
+                first_last_minor({2,i2}) = i1-1;
+            }
+
+        }
+    }
 }
 
 
@@ -659,6 +679,11 @@ void Gas_optics_rrtmgp_gpu<TF>::init_abs_coeffs(
             this->scale_by_complement_upper,
             this->kminor_start_upper);
 
+    this->first_last_minor_lower.set_dims({2,kmajor.dim(1)});
+    this->first_last_minor_upper.set_dims({2,kmajor.dim(1)});
+    invert_minor_gpt_limits(this->minor_limits_gpt_lower, this->first_last_minor_lower); 
+    invert_minor_gpt_limits(this->minor_limits_gpt_upper, this->first_last_minor_upper); 
+        
     // Arrays not reduced by the presence, or lack thereof, of a gas
     this->press_ref = press_ref;
     this->temp_ref = temp_ref;
@@ -722,7 +747,7 @@ void Gas_optics_rrtmgp_gpu<TF>::init_abs_coeffs(
     // create gpoint flavor list
     create_gpoint_flavor(
             key_species_red, this->get_gpoint_bands(), this->flavor, this->gpoint_flavor);
-
+    
     // minimum, maximum reference temperature, pressure -- assumes low-to-high ordering
     // for T, high-to-low ordering for p
     this->temp_ref_min = this->temp_ref({1});
@@ -761,6 +786,8 @@ void Gas_optics_rrtmgp_gpu<TF>::init_abs_coeffs(
     this->kminor_upper_gpu = this->kminor_upper;
     this->minor_limits_gpt_lower_gpu = this->minor_limits_gpt_lower;
     this->minor_limits_gpt_upper_gpu = this->minor_limits_gpt_upper;
+    this->first_last_minor_lower_gpu = this->first_last_minor_lower;
+    this->first_last_minor_upper_gpu = this->first_last_minor_upper;
     this->minor_scales_with_density_lower_gpu = this->minor_scales_with_density_lower;
     this->minor_scales_with_density_upper_gpu = this->minor_scales_with_density_upper;
     this->scale_by_complement_lower_gpu = this->scale_by_complement_lower;
@@ -1098,6 +1125,8 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 kminor_upper_gpu,
                 minor_limits_gpt_lower_gpu,
                 minor_limits_gpt_upper_gpu,
+                first_last_minor_lower_gpu,
+                first_last_minor_upper_gpu,
                 minor_scales_with_density_lower_gpu,
                 minor_scales_with_density_upper_gpu,
                 scale_by_complement_lower_gpu,
@@ -1146,6 +1175,8 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 kminor_upper_gpu,
                 minor_limits_gpt_lower_gpu,
                 minor_limits_gpt_upper_gpu,
+                first_last_minor_lower_gpu,
+                first_last_minor_upper_gpu,
                 minor_scales_with_density_lower_gpu,
                 minor_scales_with_density_upper_gpu,
                 scale_by_complement_lower_gpu,

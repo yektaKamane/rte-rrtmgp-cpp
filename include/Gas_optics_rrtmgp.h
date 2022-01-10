@@ -440,6 +440,9 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
         Array<int,2> minor_limits_gpt_lower;
         Array<int,2> minor_limits_gpt_upper;
 
+        Array<int,2> first_last_minor_lower;
+        Array<int,2> first_last_minor_upper;
+
         Array<BOOL_TYPE,1> minor_scales_with_density_lower;
         Array<BOOL_TYPE,1> minor_scales_with_density_upper;
 
@@ -477,6 +480,8 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
         Array_gpu<TF,3> kminor_upper_gpu;
         Array_gpu<int,2> minor_limits_gpt_lower_gpu;
         Array_gpu<int,2> minor_limits_gpt_upper_gpu;
+        Array_gpu<int,2> first_last_minor_lower_gpu;
+        Array_gpu<int,2> first_last_minor_upper_gpu;
         Array_gpu<BOOL_TYPE,1> minor_scales_with_density_lower_gpu;
         Array_gpu<BOOL_TYPE,1> minor_scales_with_density_upper_gpu;
         Array_gpu<BOOL_TYPE,1> scale_by_complement_lower_gpu;

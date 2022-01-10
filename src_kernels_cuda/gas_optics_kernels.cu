@@ -343,7 +343,7 @@ void gas_optical_depths_major_kernel(
 
 template<typename TF> __global__
 void gas_optical_depths_minor_kernel(
-        const int ncol, const int nlay, const int ngpt,
+        const int ncol, const int nlay, const int ngpt, const int igpt,
         const int ngas, const int nflav, const int ntemp, const int neta,
         const int nscale,
         const int nminor,
@@ -352,6 +352,7 @@ void gas_optical_depths_minor_kernel(
         const int* __restrict__ gpoint_flavor,
         const TF* __restrict__ kminor,
         const int* __restrict__ minor_limits_gpt,
+        const int* __restrict__ first_last_minor,
         const BOOL_TYPE* __restrict__ minor_scales_with_density,
         const BOOL_TYPE* __restrict__ scale_by_complement,
         const int* __restrict__ idx_minor,
@@ -364,98 +365,66 @@ void gas_optical_depths_minor_kernel(
         const int* __restrict__ jeta,
         const int* __restrict__ jtemp,
         const BOOL_TYPE* __restrict__ tropo,
-        TF* __restrict__ tau,
-        TF* __restrict__ tau_minor)
+        TF* __restrict__ tau)
 {
-    const int ilay = blockIdx.y * block_size_y + threadIdx.y;
-    const int icol = blockIdx.z * block_size_z + threadIdx.z;
-
-    __shared__ TF scalings[block_size_z][block_size_y];
+    const int ilay = blockIdx.x * blockDim.x + threadIdx.x;
+    const int icol = blockIdx.y * blockDim.y + threadIdx.y;
 
     if ( (icol < ncol) && (ilay < nlay) )
     {
         const int idx_collay = icol + ilay*ncol;
+        const int minor_start = first_last_minor[2*igpt];
+        const int minor_end   = first_last_minor[2*igpt+1];
 
-        if (tropo[idx_collay] == idx_tropo)
+        if ((tropo[idx_collay] == idx_tropo) && (minor_start >= 0) )
         {
-            for (int imnr=0; imnr<nscale; ++imnr)
+
+            const int gpt_offs = 1-idx_tropo;
+            const int iflav = gpoint_flavor[2*igpt + gpt_offs]-1;
+
+            const int idx_fcl2 = 2 * 2 * (icol + ilay*ncol + iflav*ncol*nlay);
+            const int idx_fcl1 = 2 * (icol + ilay*ncol + iflav*ncol*nlay);
+
+            const TF* kfminor = &fminor[idx_fcl2];
+            const TF* kin = &kminor[0];
+
+            const int j0 = jeta[idx_fcl1];
+            const int j1 = jeta[idx_fcl1+1];
+            const int kjtemp = jtemp[idx_collay];
+
+            const int idx_out = icol + ilay*ncol + (igpt)*ncol*nlay;
+            for (int imnr=minor_start; imnr<=minor_end; ++imnr)
             {
-                TF scaling = TF(0.);
+                const int ncl = ncol * nlay;
+                TF scaling = col_gas[idx_collay + idx_minor[imnr] * ncl];
 
-                if (threadIdx.x == 0)
+                if (minor_scales_with_density[imnr])
                 {
-                    const int ncl = ncol * nlay;
-                    scaling = col_gas[idx_collay + idx_minor[imnr] * ncl];
+                    const TF PaTohPa = 0.01;
+                    scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
 
-                    if (minor_scales_with_density[imnr])
+                    if (idx_minor_scaling[imnr] > 0)
                     {
-                        const TF PaTohPa = 0.01;
-                        scaling *= PaTohPa * play[idx_collay] / tlay[idx_collay];
+                        const int idx_collaywv = icol + ilay*ncol + idx_h2o*ncl;
+                        TF vmr_fact = TF(1.) / col_gas[idx_collay];
+                        TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
 
-                        if (idx_minor_scaling[imnr] > 0)
-                        {
-                            const int idx_collaywv = icol + ilay*ncol + idx_h2o*ncl;
-                            TF vmr_fact = TF(1.) / col_gas[idx_collay];
-                            TF dry_fact = TF(1.) / (TF(1.) + col_gas[idx_collaywv] * vmr_fact);
-
-                            if (scale_by_complement[imnr])
-                                scaling *= (TF(1.) - col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact);
-                            else
-                                scaling *= col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact;
-                        }
+                        if (scale_by_complement[imnr])
+                            scaling *= (TF(1.) - col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact);
+                        else
+                            scaling *= col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact;
                     }
-
-                    scalings[threadIdx.z][threadIdx.y] = scaling;
                 }
-                __syncthreads();
 
-                scaling = scalings[threadIdx.z][threadIdx.y];
-
-                const int gpt_start = minor_limits_gpt[2*imnr]-1;
-                const int gpt_end = minor_limits_gpt[2*imnr+1];
-                const int gpt_offs = 1-idx_tropo;
-                const int iflav = gpoint_flavor[2*gpt_start + gpt_offs]-1;
-
-                const int idx_fcl2 = 2 * 2 * (icol + ilay*ncol + iflav*ncol*nlay);
-                const int idx_fcl1 = 2 * (icol + ilay*ncol + iflav*ncol*nlay);
-
-                const TF* kfminor = &fminor[idx_fcl2];
-                const TF* kin = &kminor[0];
-
-                const int j0 = jeta[idx_fcl1];
-                const int j1 = jeta[idx_fcl1+1];
-                const int kjtemp = jtemp[idx_collay];
-                const int band_gpt = gpt_end-gpt_start;
+                const int start_of_band = minor_limits_gpt[2*imnr]-1;
                 const int gpt_offset = kminor_start[imnr]-1;
 
-                if constexpr (block_size_x == max_gpt)
-                {
-                    if (threadIdx.x < band_gpt)
-                    {
-                        const int igpt = threadIdx.x;
+                TF ltau_minor = kfminor[0] * kin[(kjtemp-1) + (j0-1)*ntemp + (igpt-start_of_band+gpt_offset)*ntemp*neta] +
+                                kfminor[1] * kin[(kjtemp-1) +  j0   *ntemp + (igpt-start_of_band+gpt_offset)*ntemp*neta] +
+                                kfminor[2] * kin[kjtemp     + (j1-1)*ntemp + (igpt-start_of_band+gpt_offset)*ntemp*neta] +
+                                kfminor[3] * kin[kjtemp     +  j1   *ntemp + (igpt-start_of_band+gpt_offset)*ntemp*neta];
 
-                        TF ltau_minor = kfminor[0] * kin[(kjtemp-1) + (j0-1)*ntemp + (igpt+gpt_offset)*ntemp*neta] +
-                                        kfminor[1] * kin[(kjtemp-1) +  j0   *ntemp + (igpt+gpt_offset)*ntemp*neta] +
-                                        kfminor[2] * kin[kjtemp     + (j1-1)*ntemp + (igpt+gpt_offset)*ntemp*neta] +
-                                        kfminor[3] * kin[kjtemp     +  j1   *ntemp + (igpt+gpt_offset)*ntemp*neta];
-
-                        const int idx_out = icol + ilay*ncol + (igpt+gpt_start)*ncol*nlay;
-                        tau[idx_out] += ltau_minor * scaling;
-                    }
-                }
-                else
-                {
-                    for (int igpt=threadIdx.x; igpt<band_gpt; igpt+=block_size_x)
-                    {
-                        TF ltau_minor = kfminor[0] * kin[(kjtemp-1) + (j0-1)*ntemp + (igpt+gpt_offset)*ntemp*neta] +
-                                        kfminor[1] * kin[(kjtemp-1) +  j0   *ntemp + (igpt+gpt_offset)*ntemp*neta] +
-                                        kfminor[2] * kin[kjtemp     + (j1-1)*ntemp + (igpt+gpt_offset)*ntemp*neta] +
-                                        kfminor[3] * kin[kjtemp     +  j1   *ntemp + (igpt+gpt_offset)*ntemp*neta];
-
-                        const int idx_out = icol + ilay*ncol + (igpt+gpt_start)*ncol*nlay;
-                        tau[idx_out] += ltau_minor * scaling;
-                    }
-                }
+                tau[idx_out] += ltau_minor * scaling;
             }
         }
     }

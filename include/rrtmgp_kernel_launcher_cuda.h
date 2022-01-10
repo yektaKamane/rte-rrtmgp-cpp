@@ -105,6 +105,8 @@ namespace rrtmgp_kernel_launcher_cuda
             const Array_gpu<TF,3>& kminor_upper,
             const Array_gpu<int,2>& minor_limits_gpt_lower,
             const Array_gpu<int,2>& minor_limits_gpt_upper,
+            const Array_gpu<int,2>& first_last_minor_lower,
+            const Array_gpu<int,2>& first_last_minor_upper,
             const Array_gpu<BOOL_TYPE,1>& minor_scales_with_density_lower,
             const Array_gpu<BOOL_TYPE,1>& minor_scales_with_density_upper,
             const Array_gpu<BOOL_TYPE,1>& scale_by_complement_lower,
