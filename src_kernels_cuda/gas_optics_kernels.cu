@@ -370,7 +370,7 @@ void scaling_kernel(
 
             const int idx_out = icol + ilay*ncol + imnr*ncol*nlay;
             const int ncl = ncol * nlay;
-            
+
             TF scaling = col_gas[idx_collay + idx_minor[imnr] * ncl];
 
             if (minor_scales_with_density[imnr])
@@ -390,7 +390,6 @@ void scaling_kernel(
                         scaling *= col_gas[idx_collay + idx_minor_scaling[imnr] * ncl] * vmr_fact * dry_fact;
                 }
             }
-            if (icol==0 && ilay==0) printf("XX %d %d %f \n",imnr,idx_out,scaling);
             scalings[idx_out] = scaling;
         }
     }

@@ -402,7 +402,7 @@ namespace
             for (int i2=minor_limits_gpt({1,i1}); i2<=minor_limits_gpt({2,i1}); ++i2)
             {
                 if (first_last_minor({1,i2}) == -1)
-                {   
+                {
                     first_last_minor({1,i2}) = i1-1;
                 }
                 first_last_minor({2,i2}) = i1-1;
@@ -681,9 +681,9 @@ void Gas_optics_rrtmgp_gpu<TF>::init_abs_coeffs(
 
     this->first_last_minor_lower.set_dims({2,kmajor.dim(1)});
     this->first_last_minor_upper.set_dims({2,kmajor.dim(1)});
-    invert_minor_gpt_limits(this->minor_limits_gpt_lower, this->first_last_minor_lower); 
-    invert_minor_gpt_limits(this->minor_limits_gpt_upper, this->first_last_minor_upper); 
-        
+    invert_minor_gpt_limits(this->minor_limits_gpt_lower, this->first_last_minor_lower);
+    invert_minor_gpt_limits(this->minor_limits_gpt_upper, this->first_last_minor_upper);
+
     // Arrays not reduced by the presence, or lack thereof, of a gas
     this->press_ref = press_ref;
     this->temp_ref = temp_ref;
@@ -747,7 +747,7 @@ void Gas_optics_rrtmgp_gpu<TF>::init_abs_coeffs(
     // create gpoint flavor list
     create_gpoint_flavor(
             key_species_red, this->get_gpoint_bands(), this->flavor, this->gpoint_flavor);
-    
+
     // minimum, maximum reference temperature, pressure -- assumes low-to-high ordering
     // for T, high-to-low ordering for p
     this->temp_ref_min = this->temp_ref({1});
@@ -1091,7 +1091,7 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
             tropo,
             jeta, jpress,
             compute_gas_taus_map);
-    
+
     int idx_h2o = -1;
     for  (int i=1; i<=this->gas_names.dim(1); ++i)
         if (gas_names({i}) == "h2o")
@@ -1102,11 +1102,11 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
 
     if (idx_h2o == -1)
         throw std::runtime_error("idx_h2o cannot be found");
-    
+
     rrtmgp_kernel_launcher_cuda::minor_scalings(
-            ncol, nlay, nflav, ngpt, 
+            ncol, nlay, nflav, ngpt,
             nminorlower, nminorupper,
-            idx_h2o,  
+            idx_h2o,
             gpoint_flavor,
             minor_limits_gpt_lower,
             minor_limits_gpt_upper,
@@ -1125,7 +1125,6 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
             scalings_lower,
             scalings_upper,
             compute_gas_taus_map);
-
 
     bool has_rayleigh = (this->krayl.size() > 0);
 
@@ -1279,7 +1278,7 @@ void Gas_optics_rrtmgp_gpu<TF>::source(
             fmajor, jeta, tropo, jtemp, jpress,
             gpoint_bands, band_lims_gpoint, this->planck_frac_gpu, this->temp_ref_min,
             this->totplnk_delta, this->totplnk_gpu, this->gpoint_flavor_gpu,
-            sources.get_sfc_source(), sources.get_lay_source(), sources.get_lev_source_inc(), 
+            sources.get_sfc_source(), sources.get_lay_source(), sources.get_lev_source_inc(),
             sources.get_lev_source_dec(), sources.get_sfc_source_jac(), source_map);
 }
 
