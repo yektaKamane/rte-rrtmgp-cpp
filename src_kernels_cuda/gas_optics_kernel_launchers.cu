@@ -413,16 +413,7 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,3>& tau,
             Tuner_map& tunings)
     {
-        const int block_lay = 4;
-        const int block_col = 4;
-
-        const int grid_lay = nlay/block_lay + (nlay%block_lay > 0);
-        const int grid_col = ncol/block_col + (ncol%block_col > 0);
-
-        dim3 grid_gpu_maj(grid_lay, grid_col, 1);
-        dim3 block_gpu_maj(block_lay, block_col, 1);
-
-        //dim3 grid_gpu_maj{1, nlay, ncol}, block_gpu_maj;
+        dim3 grid_gpu_maj{nlay, ncol, 1}, block_gpu_maj;
         if (tunings.count("gas_optical_depths_major_kernel") == 0)
         {
             std::tie(grid_gpu_maj, block_gpu_maj) = tune_kernel(
@@ -463,9 +454,7 @@ namespace rrtmgp_kernel_launcher_cuda
         // Lower
         int idx_tropo = 1;
 
-        dim3 grid_gpu_min_1(grid_lay, grid_col, 1);
-        dim3 block_gpu_min_1(block_lay, block_col, 1);
-
+        dim3 grid_gpu_min_1(nlay, ncol, 1), block_gpu_min_1;
         if (tunings.count("gas_optical_depths_minor_kernel_lower") == 0)
         {
             std::tie(grid_gpu_min_1, block_gpu_min_1) = tune_kernel(
@@ -527,9 +516,7 @@ namespace rrtmgp_kernel_launcher_cuda
         // Upper
         idx_tropo = 0;
 
-        dim3 grid_gpu_min_2(grid_lay, grid_col, 1);
-        dim3 block_gpu_min_2(block_lay, block_col, 1);
-
+        dim3 grid_gpu_min_2(nlay, ncol, 1), block_gpu_min_2;
         if (tunings.count("gas_optical_depths_minor_kernel_upper") == 0)
         {
             std::tie(grid_gpu_min_2, block_gpu_min_2) = tune_kernel(
