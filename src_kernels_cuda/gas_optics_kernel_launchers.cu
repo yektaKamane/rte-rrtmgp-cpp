@@ -264,15 +264,15 @@ namespace rrtmgp_kernel_launcher_cuda
     {
         TF tmin = std::numeric_limits<TF>::epsilon();
 
-        dim3 grid{ncol, nlay, ngpt}, block;
+        dim3 grid{ncol, nlay, 1}, block;
         if (tunings.count("combine_abs_and_rayleigh_kernel") == 0)
         {
             std::tie(grid, block) = tune_kernel(
                 "combine_abs_and_rayleigh_kernel",
-                {ncol, nlay, ngpt},
-                {1, 2, 4, 8, 16, 24, 32, 48, 64, 96}, {1, 2, 4}, {1, 2, 4, 8, 16, 24, 32, 48, 64, 96},
+                {ncol, nlay, 1},
+                {24, 32, 48, 64, 96, 128, 256, 512}, {1, 2, 4}, {1},
                 combine_abs_and_rayleigh_kernel<TF>,
-                ncol, nlay, ngpt, tmin,
+                ncol, nlay, ngpt, tmin, 0,
                 tau_abs.ptr(), tau_rayleigh.ptr(),
                 tau.ptr(), ssa.ptr(), g.ptr());
 
@@ -285,10 +285,13 @@ namespace rrtmgp_kernel_launcher_cuda
             block = tunings["combine_abs_and_rayleigh_kernel"].second;
         }
 
-        combine_abs_and_rayleigh_kernel<<<grid, block>>>(
-                ncol, nlay, ngpt, tmin,
-                tau_abs.ptr(), tau_rayleigh.ptr(),
-                tau.ptr(), ssa.ptr(), g.ptr());
+        for (int igpt=0; igpt<ngpt; ++igpt)
+        {
+            combine_abs_and_rayleigh_kernel<<<grid, block>>>(
+                    ncol, nlay, ngpt, tmin, igpt,
+                    tau_abs.ptr(), tau_rayleigh.ptr(),
+                    tau.ptr(), ssa.ptr(), g.ptr());
+        }
     }
 
     template<typename TF>
@@ -579,16 +582,18 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,2>& sfc_src_jac,
             Tuner_map& tunings)
     {
-        dim3 grid(ngpt, n_lay, n_col), block;
+        const TF delta_Tsurf = TF(1.);
+        
+        dim3 grid(ncol, nlay, 1), block;
         if (tunings.count("Planck_source_kernel") == 0)
         {
             std::tie(grid, block) = tune_kernel(
                     "Planck_source_kernel",
-                    {ngpt, nlay, ncol},
-                    {1, 2, 4}, {1, 2}, {1, 2, 4, 8, 16, 32, 48, 64, 96, 128, 256},
+                    {ncol, nlay, 1},
+                    {16, 32, 48, 64, 96, 128, 256, 512}, {1, 2, 4, 8}, {1},
                     Planck_source_kernel<TF>,
                     ncol, nlay, nbnd, ngpt,
-                    nflav, neta, npres, ntemp, nPlanckTemp,
+                    nflav, neta, npres, ntemp, nPlanckTemp, 0,
                     tlay.ptr(), tlev.ptr(), tsfc.ptr(), sfc_lay,
                     fmajor.ptr(), jeta.ptr(), tropo.ptr(), jtemp.ptr(),
                     jpress.ptr(), gpoint_bands.ptr(), band_lims_gpt.ptr(),
@@ -607,18 +612,21 @@ namespace rrtmgp_kernel_launcher_cuda
             block = tunings["Planck_source_kernel"].second;
         }
 
-        Planck_source_kernel<<<grid, block>>>(
-                ncol, nlay, nbnd, ngpt,
-                nflav, neta, npres, ntemp, nPlanckTemp,
-                tlay.ptr(), tlev.ptr(), tsfc.ptr(), sfc_lay,
-                fmajor.ptr(), jeta.ptr(), tropo.ptr(), jtemp.ptr(),
-                jpress.ptr(), gpoint_bands.ptr(), band_lims_gpt.ptr(),
-                pfracin.ptr(), temp_ref_min, totplnk_delta,
-                totplnk.ptr(), gpoint_flavor.ptr(),
-                delta_Tsurf,
-                sfc_src.ptr(), lay_src.ptr(),
-                lev_src_inc.ptr(), lev_src_dec.ptr(),
-                sfc_src_jac.ptr());
+        for (int igpt=0; igpt<ngpt; ++igpt)
+        {
+            Planck_source_kernel<<<grid, block>>>(
+                    ncol, nlay, nbnd, ngpt,
+                    nflav, neta, npres, ntemp, nPlanckTemp, igpt,
+                    tlay.ptr(), tlev.ptr(), tsfc.ptr(), sfc_lay,
+                    fmajor.ptr(), jeta.ptr(), tropo.ptr(), jtemp.ptr(),
+                    jpress.ptr(), gpoint_bands.ptr(), band_lims_gpt.ptr(),
+                    pfracin.ptr(), temp_ref_min, totplnk_delta,
+                    totplnk.ptr(), gpoint_flavor.ptr(),
+                    delta_Tsurf,
+                    sfc_src.ptr(), lay_src.ptr(),
+                    lev_src_inc.ptr(), lev_src_dec.ptr(),
+                    sfc_src_jac.ptr());
+        }
     }
 }
 

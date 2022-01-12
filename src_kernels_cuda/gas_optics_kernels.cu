@@ -132,7 +132,7 @@ template<typename TF> __global__
 void Planck_source_kernel(
         const int ncol, const int nlay, const int nband, const int ngpt,
         const int nflav, const int neta, const int npres, const int ntemp,
-        const int nPlanckTemp,
+        const int nPlanckTemp, const int igpt,
         const TF* __restrict__ tlay, const TF* __restrict__ tlev,
         const TF* __restrict__ tsfc,
         const int sfc_lay,
@@ -147,11 +147,10 @@ void Planck_source_kernel(
         TF* __restrict__ lev_src_inc, TF* __restrict__ lev_src_dec,
         TF* __restrict__ sfc_src_jac)
 {
-    const int igpt = blockIdx.x*blockDim.x + threadIdx.x;
+    const int icol = blockIdx.x*blockDim.x + threadIdx.x;
     const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
-    const int icol = blockIdx.z*blockDim.z + threadIdx.z;
 
-    if ( (icol < ncol) && (ilay < nlay) && (igpt < ngpt))
+    if ( (icol < ncol) && (ilay < nlay))
     {
         const int ibnd = gpoint_bands[igpt]-1;
         const int idx_collay = icol + ilay * ncol;
@@ -517,16 +516,15 @@ void compute_tau_rayleigh_kernel(
 
 template<typename TF> __global__
 void combine_abs_and_rayleigh_kernel(
-        const int ncol, const int nlay, const int ngpt, const TF tmin,
+        const int ncol, const int nlay, const int ngpt, const TF tmin, const int igpt,
         const TF* __restrict__ tau_abs, const TF* __restrict__ tau_rayleigh,
         TF* __restrict__ tau, TF* __restrict__ ssa, TF* __restrict__ g)
 {
     // Fetch the three coordinates.
     const int icol = blockIdx.x*blockDim.x + threadIdx.x;
     const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
-    const int igpt = blockIdx.z*blockDim.z + threadIdx.z;
 
-    if ( (icol < ncol) && (ilay < nlay) && (igpt < ngpt) )
+    if ( (icol < ncol) && (ilay < nlay) )
     {
         const int idx = icol + ilay*ncol + igpt*ncol*nlay;
 
