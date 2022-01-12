@@ -329,18 +329,18 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,3>& tau_rayleigh,
             Tuner_map& tunings)
     {
-        dim3 grid{ncol, nlay, ngpt}, block;
+        dim3 grid{ncol, nlay, 1}, block;
 
         if (tunings.count("compute_tau_rayleigh_kernel") == 0)
         {
             std::tie(grid, block) = tune_kernel(
                 "compute_tau_rayleigh_kernel",
-                {ncol, nlay, ngpt},
-                // {1, 2, 4, 16, 24, 32, 48, 64, 96}, {1, 2, 4}, {1, 2, 4, 8, 16},
-                {1, 2, 4, 16, 24, 32}, {1, 2, 4}, {1, 2, 4, 8, 16},
+                {ncol, nlay, 1},
+                {1, 2, 4, 16, 24, 32, 64, 128}, {1, 2, 4}, {1},
                 compute_tau_rayleigh_kernel<TF>,
                 ncol, nlay, nbnd, ngpt,
                 ngas, nflav, neta, npres, ntemp,
+                0,
                 gpoint_flavor.ptr(),
                 gpoint_bands.ptr(),
                 band_lims_gpt.ptr(),
@@ -358,18 +358,22 @@ namespace rrtmgp_kernel_launcher_cuda
             grid = tunings["compute_tau_rayleigh_kernel"].first;
             block = tunings["compute_tau_rayleigh_kernel"].second;
         }
-
-        compute_tau_rayleigh_kernel<<<grid, block>>>(
-                ncol, nlay, nbnd, ngpt,
-                ngas, nflav, neta, npres, ntemp,
-                gpoint_flavor.ptr(),
-                gpoint_bands.ptr(),
-                band_lims_gpt.ptr(),
-                krayl.ptr(),
-                idx_h2o, col_dry.ptr(), col_gas.ptr(),
-                fminor.ptr(), jeta.ptr(),
-                tropo.ptr(), jtemp.ptr(),
-                tau_rayleigh.ptr());
+        
+        for (int igpt=0; igpt<ngpt; ++igpt)
+        {
+            compute_tau_rayleigh_kernel<<<grid, block>>>(
+                    ncol, nlay, nbnd, ngpt,
+                    ngas, nflav, neta, npres, ntemp,
+                    igpt,
+                    gpoint_flavor.ptr(),
+                    gpoint_bands.ptr(),
+                    band_lims_gpt.ptr(),
+                    krayl.ptr(),
+                    idx_h2o, col_dry.ptr(), col_gas.ptr(),
+                    fminor.ptr(), jeta.ptr(),
+                    tropo.ptr(), jtemp.ptr(),
+                    tau_rayleigh.ptr());
+        }
     }
 
     template<typename TF>

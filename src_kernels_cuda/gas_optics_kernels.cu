@@ -470,6 +470,7 @@ template<typename TF> __global__
 void compute_tau_rayleigh_kernel(
         const int ncol, const int nlay, const int nbnd, const int ngpt,
         const int ngas, const int nflav, const int neta, const int npres, const int ntemp,
+        const int igpt,
         const int* __restrict__ gpoint_flavor,
         const int* __restrict__ gpoint_bands,
         const int* __restrict__ band_lims_gpt,
@@ -482,9 +483,8 @@ void compute_tau_rayleigh_kernel(
     // Fetch the three coordinates.
     const int icol = blockIdx.x*blockDim.x + threadIdx.x;
     const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
-    const int igpt = blockIdx.z*blockDim.z + threadIdx.z;
 
-    if ( (icol < ncol) && (ilay < nlay) && (igpt < ngpt) )
+    if ( (icol < ncol) && (ilay < nlay) )
     {
         const int ibnd = gpoint_bands[igpt]-1;
 
