@@ -579,27 +579,13 @@ namespace rrtmgp_kernel_launcher_cuda
             Array_gpu<TF,2>& sfc_src_jac,
             Tuner_map& tunings)
     {
-        const TF delta_Tsurf = TF(1.);
-
-        const int block_gpt = 16;
-        const int block_lay = 4;
-        const int block_col = 2;
-
-        const int grid_gpt = ngpt/block_gpt + (ngpt%block_gpt > 0);
-        const int grid_lay = nlay/block_lay + (nlay%block_lay > 0);
-        const int grid_col = ncol/block_col + (ncol%block_col > 0);
-
-        dim3 grid_gpu(grid_gpt, grid_lay, grid_col);
-        dim3 block_gpu(block_gpt, block_lay, block_col);
-
+        dim3 grid(ngpt, n_lay, n_col), block;
         if (tunings.count("Planck_source_kernel") == 0)
         {
-            std::tie(grid_gpu, block_gpu) = tune_kernel(
+            std::tie(grid, block) = tune_kernel(
                     "Planck_source_kernel",
                     {ngpt, nlay, ncol},
-                    {1, 2, 4},
-                    {1, 2},
-                    {1, 2, 4, 8, 16, 32, 48, 64, 96, 128, 256},
+                    {1, 2, 4}, {1, 2}, {1, 2, 4, 8, 16, 32, 48, 64, 96, 128, 256},
                     Planck_source_kernel<TF>,
                     ncol, nlay, nbnd, ngpt,
                     nflav, neta, npres, ntemp, nPlanckTemp,
@@ -612,16 +598,16 @@ namespace rrtmgp_kernel_launcher_cuda
                     lev_src_inc.ptr(), lev_src_dec.ptr(),
                     sfc_src_jac.ptr());
 
-            tunings["Planck_source_kernel"].first = grid_gpu;
-            tunings["Planck_source_kernel"].second = block_gpu;
+            tunings["Planck_source_kernel"].first = grid;
+            tunings["Planck_source_kernel"].second = block;
         }
         else
         {
-            grid_gpu = tunings["Planck_source_kernel"].first;
-            block_gpu = tunings["Planck_source_kernel"].second;
+            grid = tunings["Planck_source_kernel"].first;
+            block = tunings["Planck_source_kernel"].second;
         }
 
-        Planck_source_kernel<<<grid_gpu, block_gpu>>>(
+        Planck_source_kernel<<<grid, block>>>(
                 ncol, nlay, nbnd, ngpt,
                 nflav, neta, npres, ntemp, nPlanckTemp,
                 tlay.ptr(), tlev.ptr(), tsfc.ptr(), sfc_lay,
