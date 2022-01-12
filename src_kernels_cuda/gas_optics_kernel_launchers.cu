@@ -178,7 +178,7 @@ namespace rrtmgp_kernel_launcher_cuda
         {
             std::tie(grid_1, block_1) = tune_kernel(
                     "minor_scalings_lower_kernel",
-                    {ncol, nlay, nminorlower}, {8, 16, 24, 32, 48, 64, 96, 128, 256}, {1, 2, 4, 8, 16}, {1, 2, 4, 8},
+                    {ncol, nlay, nminorlower}, {8, 16, 24, 32, 48, 64, 96, 128, 256, 512}, {1, 2, 4, 8, 16}, {1, 2, 4, 8},
                     scaling_kernel<TF>,
                     ncol, nlay, nflav, nminorlower,
                     idx_h2o, idx_tropo,
@@ -220,7 +220,7 @@ namespace rrtmgp_kernel_launcher_cuda
         {
             std::tie(grid_2, block_2) = tune_kernel(
                     "minor_scalings_upper_kernel",
-                    {ncol, nlay, nminorupper}, {8, 16, 24, 32, 48, 64, 96, 128, 256}, {1, 2, 4, 8, 16}, {1, 2, 4, 8},
+                    {ncol, nlay, nminorupper}, {8, 16, 24, 32, 48, 64, 96, 128, 256, 512}, {1, 2, 4, 8, 16}, {1, 2, 4, 8},
                     scaling_kernel<TF>,
                     ncol, nlay, nflav, nminorupper,
                     idx_h2o, idx_tropo,
@@ -396,7 +396,7 @@ namespace rrtmgp_kernel_launcher_cuda
         {
             std::tie(grid_maj, block_maj) = tune_kernel(
                     "gas_optical_depths_major_kernel",
-                    {nlay, ncol, 1}, {1, 2, 4, 8, 16}, {8, 16, 24, 32, 48, 64, 96, 128, 256}, {1},
+                    {nlay, ncol, 1}, {1, 2, 4, 8, 16}, {8, 16, 24, 32, 48, 64, 96, 128, 256, 512}, {1},
                     gas_optical_depths_major_kernel<TF>,
                     ncol, nlay, nband, ngpt,
                     nflav, neta, npres, ntemp,

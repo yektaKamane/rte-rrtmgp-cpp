@@ -78,7 +78,7 @@ class Radiation_solver_longwave
                 const Gas_concs_gpu<TF>& gas_concs,
                 const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
                 const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
-                const Array_gpu<TF,2>& col_dry,
+                Array_gpu<TF,2>& col_dry,
                 const Array_gpu<TF,1>& t_sfc, const Array_gpu<TF,2>& emis_sfc,
                 const Array_gpu<TF,2>& lwp, const Array_gpu<TF,2>& iwp,
                 const Array_gpu<TF,2>& rel, const Array_gpu<TF,2>& rei,
@@ -106,14 +106,11 @@ class Radiation_solver_longwave
         std::unique_ptr<Cloud_optics_gpu<TF>> cloud_optics_gpu;
         Rte_lw_gpu<TF> rte_lw;
 
-        std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props_subset;
-        std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props_residual;
+        std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props;
 
-        std::unique_ptr<Source_func_lw_gpu<TF>> sources_subset;
-        std::unique_ptr<Source_func_lw_gpu<TF>> sources_residual;
+        std::unique_ptr<Source_func_lw_gpu<TF>> sources;
 
-        std::unique_ptr<Optical_props_1scl_gpu<TF>> cloud_optical_props_subset;
-        std::unique_ptr<Optical_props_1scl_gpu<TF>> cloud_optical_props_residual;
+        std::unique_ptr<Optical_props_1scl_gpu<TF>> cloud_optical_props;
         #endif
 };
 

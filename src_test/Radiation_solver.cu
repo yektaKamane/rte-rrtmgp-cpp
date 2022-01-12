@@ -383,7 +383,7 @@ void Radiation_solver_longwave<TF>::solve_gpu(
         const Gas_concs_gpu<TF>& gas_concs,
         const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
         const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
-        const Array_gpu<TF,2>& col_dry,
+        Array_gpu<TF,2>& col_dry,
         const Array_gpu<TF,1>& t_sfc, const Array_gpu<TF,2>& emis_sfc,
         const Array_gpu<TF,2>& lwp, const Array_gpu<TF,2>& iwp,
         const Array_gpu<TF,2>& rel, const Array_gpu<TF,2>& rei,
@@ -400,167 +400,94 @@ void Radiation_solver_longwave<TF>::solve_gpu(
 
     const BOOL_TYPE top_at_1 = p_lay({1, 1}) < p_lay({1, n_lay});
 
-    constexpr int n_col_block = 1024;
-
-    // Read the sources and create containers for the substeps.
-    int n_blocks = n_col / n_col_block;
-    int n_col_block_residual = n_col % n_col_block;
-
-    if (!optical_props_subset)
-        optical_props_subset = std::make_unique<Optical_props_1scl_gpu<TF>>(n_col_block, n_lay, *kdist_gpu);
-    if (!sources_subset)
-        sources_subset = std::make_unique<Source_func_lw_gpu<TF>>(n_col_block, n_lay, *kdist_gpu);
-
-    if (n_col_block_residual > 0 && !optical_props_residual)
-        optical_props_residual = std::make_unique<Optical_props_1scl_gpu<TF>>(n_col_block_residual, n_lay, *kdist_gpu);
-    if (n_col_block_residual > 0 && !sources_residual)
-        sources_residual = std::make_unique<Source_func_lw_gpu<TF>>(n_col_block_residual, n_lay, *kdist_gpu);
+    optical_props = std::make_unique<Optical_props_1scl_gpu<TF>>(n_col, n_lay, *kdist_gpu);
+    sources = std::make_unique<Source_func_lw_gpu<TF>>(n_col, n_lay, *kdist_gpu);
 
     if (switch_cloud_optics)
+        cloud_optical_props = std::make_unique<Optical_props_1scl_gpu<TF>>(n_col, n_lay, *cloud_optics_gpu);
+
+    if (col_dry.size() == 0)
+        col_dry.set_dims({n_col, n_lay});
+        Gas_optics_rrtmgp_gpu<TF>::get_col_dry(col_dry, gas_concs.get_vmr("h2o"), p_lev);
+
+    kdist_gpu->gas_optics(
+            p_lay,
+            p_lev,
+            t_lay,
+            t_sfc,
+            gas_concs,
+            optical_props,
+            *sources,
+            col_dry,
+            t_lev);
+    
+    if (switch_cloud_optics)
     {
-        if (!cloud_optical_props_subset)
-            cloud_optical_props_subset = std::make_unique<Optical_props_1scl_gpu<TF>>(n_col_block, n_lay, *cloud_optics_gpu);
-        if (n_col_block_residual > 0 && !cloud_optical_props_residual)
-            cloud_optical_props_residual = std::make_unique<Optical_props_1scl_gpu<TF>>(n_col_block_residual, n_lay, *cloud_optics_gpu);
+        cloud_optics_gpu->cloud_optics(
+                lwp,
+                iwp,
+                rel,
+                rei,
+                *cloud_optical_props);
+        // cloud->delta_scale();
+
+        // Add the cloud optical props to the gas optical properties.
+        add_to(
+                dynamic_cast<Optical_props_1scl_gpu<TF>&>(*optical_props),
+                dynamic_cast<Optical_props_1scl_gpu<TF>&>(*cloud_optical_props));
     }
-
-    // Lambda function for solving optical properties subset.
-    auto call_kernels = [&](
-            const int col_s_in, const int col_e_in,
-            std::unique_ptr<Optical_props_arry_gpu<TF>>& optical_props_subset_in,
-            std::unique_ptr<Optical_props_1scl_gpu<TF>>& cloud_optical_props_subset_in,
-            Source_func_lw_gpu<TF>& sources_subset_in,
-            const Array_gpu<TF,2>& emis_sfc_subset_in,
-            Fluxes_broadband_gpu<TF>& fluxes,
-            Fluxes_broadband_gpu<TF>& bnd_fluxes)
+    
+    // Store the optical properties, if desired.
+    if (switch_output_optical)
     {
-        const int n_col_in = col_e_in - col_s_in + 1;
-        Gas_concs_gpu<TF> gas_concs_subset(gas_concs, col_s_in, n_col_in);
-
-        auto p_lev_subset = p_lev.subset({{ {col_s_in, col_e_in}, {1, n_lev} }});
-
-        Array_gpu<TF,2> col_dry_subset({n_col_in, n_lay});
-        if (col_dry.size() == 0)
-            Gas_optics_rrtmgp_gpu<TF>::get_col_dry(col_dry_subset, gas_concs_subset.get_vmr("h2o"), p_lev_subset);
-        else
-            col_dry_subset = col_dry.subset({{ {col_s_in, col_e_in}, {1, n_lay} }});
-
-        kdist_gpu->gas_optics(
-                p_lay.subset({{ {col_s_in, col_e_in}, {1, n_lay} }}),
-                p_lev_subset,
-                t_lay.subset({{ {col_s_in, col_e_in}, {1, n_lay} }}),
-                t_sfc.subset({{ {col_s_in, col_e_in} }}),
-                gas_concs_subset,
-                optical_props_subset_in,
-                sources_subset_in,
-                col_dry_subset,
-                t_lev.subset({{ {col_s_in, col_e_in}, {1, n_lev} }}) );
-
-        if (switch_cloud_optics)
-        {
-            cloud_optics_gpu->cloud_optics(
-                    lwp.subset({{ {col_s_in, col_e_in}, {1, n_lay} }}),
-                    iwp.subset({{ {col_s_in, col_e_in}, {1, n_lay} }}),
-                    rel.subset({{ {col_s_in, col_e_in}, {1, n_lay} }}),
-                    rei.subset({{ {col_s_in, col_e_in}, {1, n_lay} }}),
-                    *cloud_optical_props_subset_in);
-
-            // cloud->delta_scale();
-
-            // Add the cloud optical props to the gas optical properties.
-            add_to(
-                    dynamic_cast<Optical_props_1scl_gpu<TF>&>(*optical_props_subset_in),
-                    dynamic_cast<Optical_props_1scl_gpu<TF>&>(*cloud_optical_props_subset_in));
-        }
-
-        // Store the optical properties, if desired.
-        if (switch_output_optical)
-        {
-            subset_kernel_launcher_cuda::get_from_subset(
-                    n_col, n_lay, n_gpt, n_col_in, col_s_in, tau, lay_source, lev_source_inc, lev_source_dec,
-                    optical_props_subset_in->get_tau(), sources_subset_in.get_lay_source(),
-                    sources_subset_in.get_lev_source_inc(), sources_subset_in.get_lev_source_dec());
-
-            subset_kernel_launcher_cuda::get_from_subset(
-                    n_col, n_gpt, n_col_in, col_s_in, sfc_source, sources_subset_in.get_sfc_source());
-        }
-
-        if (!switch_fluxes)
-            return;
-
-        Array_gpu<TF,3> gpt_flux_up({n_col_in, n_lev, n_gpt});
-        Array_gpu<TF,3> gpt_flux_dn({n_col_in, n_lev, n_gpt});
-
-        constexpr int n_ang = 1;
-
-        rte_lw.rte_lw(
-                optical_props_subset_in,
-                top_at_1,
-                sources_subset_in,
-                emis_sfc_subset_in,
-                Array_gpu<TF,2>(), // Add an empty array, no inc_flux.
-                gpt_flux_up, gpt_flux_dn,
-                n_ang);
-        fluxes.reduce(gpt_flux_up, gpt_flux_dn, optical_props_subset_in, top_at_1);
-
-        // Copy the data to the output.
         subset_kernel_launcher_cuda::get_from_subset(
-                n_col, n_lev, n_col_in, col_s_in, lw_flux_up, lw_flux_dn, lw_flux_net,
-                fluxes.get_flux_up(), fluxes.get_flux_dn(), fluxes.get_flux_net());
+                n_col, n_lay, n_gpt, n_col, 1, tau, lay_source, lev_source_inc, lev_source_dec,
+                optical_props->get_tau(), (*sources).get_lay_source(),
+                (*sources).get_lev_source_inc(), (*sources).get_lev_source_dec());
 
-
-        if (switch_output_bnd_fluxes)
-        {
-            bnd_fluxes.reduce(gpt_flux_up, gpt_flux_dn, optical_props_subset_in, top_at_1);
-
-            subset_kernel_launcher_cuda::get_from_subset(
-                    n_col, n_lev, n_bnd, n_col_in, col_s_in, lw_bnd_flux_up, lw_bnd_flux_dn, lw_bnd_flux_net,
-                    bnd_fluxes.get_bnd_flux_up(), bnd_fluxes.get_bnd_flux_dn(), bnd_fluxes.get_bnd_flux_net());
-
-        }
-    };
-
-    for (int b=1; b<=n_blocks; ++b)
-    {
-        const int col_s = (b-1) * n_col_block + 1;
-        const int col_e =  b    * n_col_block;
-
-        Array_gpu<TF,2> emis_sfc_subset = emis_sfc.subset({{ {1, n_bnd}, {col_s, col_e} }});
-
-        std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes_subset =
-                std::make_unique<Fluxes_broadband_gpu<TF>>(n_col_block, n_lev);
-        std::unique_ptr<Fluxes_broadband_gpu<TF>> bnd_fluxes_subset =
-                std::make_unique<Fluxes_byband_gpu<TF>>(n_col_block, n_lev, n_bnd);
-
-        call_kernels(
-                col_s, col_e,
-                optical_props_subset,
-                cloud_optical_props_subset,
-                *sources_subset,
-                emis_sfc_subset,
-                *fluxes_subset,
-                *bnd_fluxes_subset);
+        subset_kernel_launcher_cuda::get_from_subset(
+                n_col, n_gpt, n_col, 1, sfc_source, (*sources).get_sfc_source());
     }
 
-    if (n_col_block_residual > 0)
+
+    if (!switch_fluxes)
+        return;
+
+    Array_gpu<TF,3> gpt_flux_up({n_col, n_lev, n_gpt});
+    Array_gpu<TF,3> gpt_flux_dn({n_col, n_lev, n_gpt});
+    
+    constexpr int n_ang = 1;
+
+    std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
+            std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
+    std::unique_ptr<Fluxes_broadband_gpu<TF>> bnd_fluxes =
+            std::make_unique<Fluxes_byband_gpu<TF>>(n_col, n_lev, n_bnd);
+
+    rte_lw.rte_lw(
+            optical_props,
+            top_at_1,
+            *sources,
+            emis_sfc,
+            Array_gpu<TF,2>(), // Add an empty array, no inc_flux.
+            gpt_flux_up, gpt_flux_dn,
+            n_ang);
+
+    (*fluxes).reduce(gpt_flux_up, gpt_flux_dn, optical_props, top_at_1);
+    
+    // Copy the data to the output.
+    subset_kernel_launcher_cuda::get_from_subset(
+            n_col, n_lev, n_col, 1, lw_flux_up, lw_flux_dn, lw_flux_net,
+            (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_net());
+
+
+    if (switch_output_bnd_fluxes)
     {
-        const int col_s = n_col - n_col_block_residual + 1;
-        const int col_e = n_col;
+        (*bnd_fluxes).reduce(gpt_flux_up, gpt_flux_dn, optical_props, top_at_1);
 
-        Array_gpu<TF,2> emis_sfc_residual = emis_sfc.subset({{ {1, n_bnd}, {col_s, col_e} }});
-        std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes_residual =
-                std::make_unique<Fluxes_broadband_gpu<TF>>(n_col_block_residual, n_lev);
-        std::unique_ptr<Fluxes_broadband_gpu<TF>> bnd_fluxes_residual =
-                std::make_unique<Fluxes_byband_gpu<TF>>(n_col_block_residual, n_lev, n_bnd);
+        subset_kernel_launcher_cuda::get_from_subset(
+                n_col, n_lev, n_bnd, n_col, 1, lw_bnd_flux_up, lw_bnd_flux_dn, lw_bnd_flux_net,
+                (*bnd_fluxes).get_bnd_flux_up(), (*bnd_fluxes).get_bnd_flux_dn(), (*bnd_fluxes).get_bnd_flux_net());
 
-        call_kernels(
-                col_s, col_e,
-                optical_props_residual,
-                cloud_optical_props_residual,
-                *sources_residual,
-                emis_sfc_residual,
-                *fluxes_residual,
-                *bnd_fluxes_residual);
     }
 }
 
@@ -608,7 +535,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
 
     const BOOL_TYPE top_at_1 = p_lay({1, 1}) < p_lay({1, n_lay});
 
-    constexpr int n_col_block = 1024;
+    const int n_col_block = n_col;
 
     // Read the sources and create containers for the substeps.
     int n_blocks = n_col / n_col_block;

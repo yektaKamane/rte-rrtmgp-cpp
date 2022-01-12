@@ -1069,7 +1069,6 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
             ncol, nlay, vmr_2d.dim(1), vmr_2d.dim(2), ngas, igas, vmr.ptr(), vmr_2d.ptr(), col_gas.ptr(), col_dry.ptr());
     }
 
-    // rrtmgp_kernel_launcher_cuda::zero_array(ngpt, nlay, ncol, tau);
 
     rrtmgp_kernel_launcher_cuda::interpolation(
             ncol, nlay,
