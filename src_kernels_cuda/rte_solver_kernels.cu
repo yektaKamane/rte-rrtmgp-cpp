@@ -10,7 +10,7 @@ template<> __device__ constexpr float k_min() { return 1.e-4f; }
 
 template<typename TF>__device__
 void lw_transport_noscat_kernel(
-        const int icol, const int igpt, const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1,
+        const int icol, const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1,
         const TF* __restrict__ tau, const TF* __restrict__ trans, const TF* __restrict__ sfc_albedo,
         const TF* __restrict__ source_dn, const TF* __restrict__ source_up, const TF* __restrict__ source_sfc,
         TF* __restrict__ radn_up, TF* __restrict__ radn_dn, const TF* __restrict__ source_sfc_jac, TF* __restrict__ radn_up_jac)
@@ -20,23 +20,23 @@ void lw_transport_noscat_kernel(
         #pragma unroll loop_unroll_factor_nlay
         for (int ilev=1; ilev<(nlay+1); ++ilev)
         {
-            const int idx1 = icol + ilev*ncol + igpt*ncol*(nlay+1);
-            const int idx2 = icol + (ilev-1)*ncol + igpt*ncol*(nlay+1);
-            const int idx3 = icol + (ilev-1)*ncol + igpt*ncol*nlay;
+            const int idx1 = icol + ilev*ncol;
+            const int idx2 = icol + (ilev-1)*ncol;
+            const int idx3 = icol + (ilev-1)*ncol;
             radn_dn[idx1] = trans[idx3] * radn_dn[idx2] + source_dn[idx3];
         }
 
-        const int idx_bot = icol + nlay*ncol + igpt*ncol*(nlay+1);
-        const int idx2d = icol + igpt*ncol;
+        const int idx_bot = icol + nlay*ncol;
+        const int idx2d = icol;
         radn_up[idx_bot] = radn_dn[idx_bot] * sfc_albedo[idx2d] + source_sfc[idx2d];
         radn_up_jac[idx_bot] = source_sfc_jac[idx2d];
 
         #pragma unroll loop_unroll_factor_nlay
         for (int ilev=nlay-1; ilev>=0; --ilev)
         {
-            const int idx1 = icol + ilev*ncol + igpt*ncol*(nlay+1);
-            const int idx2 = icol + (ilev+1)*ncol + igpt*ncol*(nlay+1);
-            const int idx3 = icol + ilev*ncol + igpt*ncol*nlay;
+            const int idx1 = icol + ilev*ncol;
+            const int idx2 = icol + (ilev+1)*ncol;
+            const int idx3 = icol + ilev*ncol;
             radn_up[idx1] = trans[idx3] * radn_up[idx2] + source_up[idx3];
             radn_up_jac[idx1] = trans[idx3] * radn_up_jac[idx2];
         }
@@ -46,23 +46,23 @@ void lw_transport_noscat_kernel(
         #pragma unroll loop_unroll_factor_nlay
         for (int ilev=(nlay-1); ilev>=0; --ilev)
         {
-            const int idx1 = icol + ilev*ncol + igpt*ncol*(nlay+1);
-            const int idx2 = icol + (ilev+1)*ncol + igpt*ncol*(nlay+1);
-            const int idx3 = icol + ilev*ncol + igpt*ncol*nlay;
+            const int idx1 = icol + ilev*ncol;
+            const int idx2 = icol + (ilev+1)*ncol;
+            const int idx3 = icol + ilev*ncol;
             radn_dn[idx1] = trans[idx3] * radn_dn[idx2] + source_dn[idx3];
         }
 
-        const int idx_bot = icol + igpt*ncol*(nlay+1);
-        const int idx2d = icol + igpt*ncol;
+        const int idx_bot = icol;
+        const int idx2d = icol;
         radn_up[idx_bot] = radn_dn[idx_bot] * sfc_albedo[idx2d] + source_sfc[idx2d];
         radn_up_jac[idx_bot] = source_sfc_jac[idx2d];
 
         #pragma unroll loop_unroll_factor_nlay
         for (int ilev=1; ilev<(nlay+1); ++ilev)
         {
-            const int idx1 = icol + ilev*ncol + igpt*ncol*(nlay+1);
-            const int idx2 = icol + (ilev-1)*ncol + igpt*ncol*(nlay+1);
-            const int idx3 = icol + (ilev-1)*ncol + igpt*ncol*nlay;
+            const int idx1 = icol;
+            const int idx2 = icol;
+            const int idx3 = icol;
             radn_up[idx1] = trans[idx3] * radn_up[idx2] + source_up[idx3];
             radn_up_jac[idx1] = trans[idx3] * radn_up_jac[idx2];;
         }
@@ -82,11 +82,10 @@ void lw_solver_noscat_step_1_kernel(
 {
     const int icol = blockIdx.x*blockDim.x + threadIdx.x;
     const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
-    const int igpt = blockIdx.z*blockDim.z + threadIdx.z;
 
-    if ( (icol < ncol) && (ilay < nlay) && (igpt < ngpt) )
+    if ( (icol < ncol) && (ilay < nlay) )
     {
-        const int idx = icol + ilay*ncol + igpt*ncol*nlay;
+        const int idx = icol + ilay*ncol;
         tau_loc[idx] = tau[idx] * D[0];
         trans[idx] = exp(-tau_loc[idx]);
 
@@ -112,22 +111,21 @@ void lw_solver_noscat_step_2_kernel(
         TF* __restrict__ source_sfc, TF* __restrict__ sfc_albedo, TF* __restrict__ source_sfc_jac)
 {
     const int icol = blockIdx.x*blockDim.x + threadIdx.x;
-    const int igpt = blockIdx.y*blockDim.y + threadIdx.y;
 
-    if ( (icol < ncol) && (igpt < ngpt) )
+    if ( (icol < ncol) )
     {
-        const int idx2d = icol + igpt*ncol;
-        sfc_albedo[idx2d] = TF(1.) - sfc_emis[idx2d];
-        source_sfc[idx2d] = sfc_emis[idx2d] * sfc_src[idx2d];
-        source_sfc_jac[idx2d] = sfc_emis[idx2d] * sfc_src_jac[idx2d];
+        const int idx = icol;
+        sfc_albedo[idx] = TF(1.) - sfc_emis[idx];
+        source_sfc[idx] = sfc_emis[idx] * sfc_src[idx];
+        source_sfc_jac[idx] = sfc_emis[idx] * sfc_src_jac[idx];
 
         const TF pi = acos(TF(-1.));
-        const int idx_top = icol + (top_at_1 ? 0 : nlay)*ncol + igpt*ncol*(nlay+1);
+        const int idx_top = icol + (top_at_1 ? 0 : nlay)*ncol;
         radn_dn[idx_top] = radn_dn[idx_top] / (TF(2.) * pi * weight[0]);
 
 
         lw_transport_noscat_kernel(
-                icol, igpt, ncol, nlay, ngpt, top_at_1, tau, trans, sfc_albedo, source_dn,
+                icol, ncol, nlay, ngpt, top_at_1, tau, trans, sfc_albedo, source_dn,
                 source_up, source_sfc, radn_up, radn_dn, source_sfc_jac, radn_up_jac);
     }
 }
@@ -145,13 +143,12 @@ void lw_solver_noscat_step_3_kernel(
 {
     const int icol = blockIdx.x*blockDim.x + threadIdx.x;
     const int ilev = blockIdx.y*blockDim.y + threadIdx.y;
-    const int igpt = blockIdx.z*blockDim.z + threadIdx.z;
 
-    if ( (icol < ncol) && (ilev < (nlay+1)) && (igpt < ngpt) )
+    if ( (icol < ncol) && (ilev < (nlay+1)))
     {
         const TF pi = acos(TF(-1.));
 
-        const int idx = icol + ilev*ncol + igpt*ncol*(nlay+1);
+        const int idx = icol + ilev*ncol;
         radn_up[idx] *= TF(2.) * pi * weight[0];
         radn_dn[idx] *= TF(2.) * pi * weight[0];
         radn_up_jac[idx] *= TF(2.) * pi * weight[0];
