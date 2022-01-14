@@ -502,7 +502,7 @@ class Array_gpu
 
             return subset_copy(a_sub, block_corners);
         }
-
+        
         inline Array_gpu<T, N> subset_copy(Array_gpu<T, N>& a_sub,
                 const std::array<int, N>& block_corners) const
         {

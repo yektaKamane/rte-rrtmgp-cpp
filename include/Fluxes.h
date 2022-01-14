@@ -149,6 +149,8 @@ class Fluxes_broadband_gpu : public Fluxes_gpu<TF>
         Fluxes_broadband_gpu(const int ncol, const int nlev);
         virtual ~Fluxes_broadband_gpu() {};
 
+        virtual void net_flux();
+
         virtual void reduce(
                 const Array_gpu<TF,3>& gpt_flux_up,
                 const Array_gpu<TF,3>& gpt_flux_dn,

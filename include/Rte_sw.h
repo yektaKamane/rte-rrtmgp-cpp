@@ -66,13 +66,13 @@ class Rte_sw_gpu
                 const std::unique_ptr<Optical_props_arry_gpu<TF>>& optical_props,
                 const BOOL_TYPE top_at_1,
                 const Array_gpu<TF,1>& mu0,
-                const Array_gpu<TF,2>& inc_flux_dir,
+                const Array_gpu<TF,1>& inc_flux_dir,
                 const Array_gpu<TF,2>& sfc_alb_dir,
                 const Array_gpu<TF,2>& sfc_alb_dif,
-                const Array_gpu<TF,2>& inc_flux_dif,
-                Array_gpu<TF,3>& gpt_flux_up,
-                Array_gpu<TF,3>& gpt_flux_dn,
-                Array_gpu<TF,3>& gpt_flux_dir);
+                const Array_gpu<TF,1>& inc_flux_dif,
+                Array_gpu<TF,2>& gpt_flux_up,
+                Array_gpu<TF,2>& gpt_flux_dn,
+                Array_gpu<TF,2>& gpt_flux_dir);
 
         void expand_and_transpose(
                 const std::unique_ptr<Optical_props_arry_gpu<TF>>& ops,

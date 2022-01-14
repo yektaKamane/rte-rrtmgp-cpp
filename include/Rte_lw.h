@@ -68,9 +68,9 @@ class Rte_lw_gpu
                 const BOOL_TYPE top_at_1,
                 const Source_func_lw_gpu<TF>& sources,
                 const Array_gpu<TF,2>& sfc_emis,
-                const Array_gpu<TF,2>& inc_flux,
-                Array_gpu<TF,3>& gpt_flux_up,
-                Array_gpu<TF,3>& gpt_flux_dn,
+                const Array_gpu<TF,1>& inc_flux,
+                Array_gpu<TF,2>& gpt_flux_up,
+                Array_gpu<TF,2>& gpt_flux_dn,
                 const int n_gauss_angles);
 
         void expand_and_transpose(

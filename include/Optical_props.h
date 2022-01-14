@@ -222,13 +222,13 @@ class Optical_props_arry_gpu : public Optical_props_gpu<TF>
 
         virtual ~Optical_props_arry_gpu() {};
 
-        virtual Array_gpu<TF,3>& get_tau() = 0;
-        virtual Array_gpu<TF,3>& get_ssa() = 0;
-        virtual Array_gpu<TF,3>& get_g  () = 0;
+        virtual Array_gpu<TF,2>& get_tau() = 0;
+        virtual Array_gpu<TF,2>& get_ssa() = 0;
+        virtual Array_gpu<TF,2>& get_g  () = 0;
 
-        virtual const Array_gpu<TF,3>& get_tau() const = 0;
-        virtual const Array_gpu<TF,3>& get_ssa() const = 0;
-        virtual const Array_gpu<TF,3>& get_g  () const = 0;
+        virtual const Array_gpu<TF,2>& get_tau() const = 0;
+        virtual const Array_gpu<TF,2>& get_ssa() const = 0;
+        virtual const Array_gpu<TF,2>& get_g  () const = 0;
 
         // Optional argument.
         virtual void delta_scale(const Array_gpu<TF,3>& forward_frac=Array_gpu<TF,3>()) = 0;
@@ -250,18 +250,18 @@ class Optical_props_1scl_gpu : public Optical_props_arry_gpu<TF>
         int get_ncol() const { return tau.dim(1); }
         int get_nlay() const { return tau.dim(2); }
 
-        Array_gpu<TF,3>& get_tau() { return tau; }
-        Array_gpu<TF,3>& get_ssa() { throw std::runtime_error("ssa is not available in this class"); }
-        Array_gpu<TF,3>& get_g  () { throw std::runtime_error("g is available in this class"); }
+        Array_gpu<TF,2>& get_tau() { return tau; }
+        Array_gpu<TF,2>& get_ssa() { throw std::runtime_error("ssa is not available in this class"); }
+        Array_gpu<TF,2>& get_g  () { throw std::runtime_error("g is available in this class"); }
 
-        const Array_gpu<TF,3>& get_tau() const { return tau; }
-        const Array_gpu<TF,3>& get_ssa() const { throw std::runtime_error("ssa is not available in this class"); }
-        const Array_gpu<TF,3>& get_g  () const { throw std::runtime_error("g is available in this class"); }
+        const Array_gpu<TF,2>& get_tau() const { return tau; }
+        const Array_gpu<TF,2>& get_ssa() const { throw std::runtime_error("ssa is not available in this class"); }
+        const Array_gpu<TF,2>& get_g  () const { throw std::runtime_error("g is available in this class"); }
 
         void delta_scale(const Array_gpu<TF,3>& forward_frac=Array_gpu<TF,3>()) {}
 
     private:
-        Array_gpu<TF,3> tau;
+        Array_gpu<TF,2> tau;
 };
 
 template<typename TF>
@@ -276,20 +276,20 @@ class Optical_props_2str_gpu : public Optical_props_arry_gpu<TF>
         int get_ncol() const { return tau.dim(1); }
         int get_nlay() const { return tau.dim(2); }
 
-        Array_gpu<TF,3>& get_tau() { return tau; }
-        Array_gpu<TF,3>& get_ssa() { return ssa; }
-        Array_gpu<TF,3>& get_g  () { return g; }
+        Array_gpu<TF,2>& get_tau() { return tau; }
+        Array_gpu<TF,2>& get_ssa() { return ssa; }
+        Array_gpu<TF,2>& get_g  () { return g; }
 
-        const Array_gpu<TF,3>& get_tau() const { return tau; }
-        const Array_gpu<TF,3>& get_ssa() const { return ssa; }
-        const Array_gpu<TF,3>& get_g  () const { return g; }
+        const Array_gpu<TF,2>& get_tau() const { return tau; }
+        const Array_gpu<TF,2>& get_ssa() const { return ssa; }
+        const Array_gpu<TF,2>& get_g  () const { return g; }
 
         void delta_scale(const Array_gpu<TF,3>& forward_frac=Array_gpu<TF,3>());
 
     private:
-        Array_gpu<TF,3> tau;
-        Array_gpu<TF,3> ssa;
-        Array_gpu<TF,3> g;
+        Array_gpu<TF,2> tau;
+        Array_gpu<TF,2> ssa;
+        Array_gpu<TF,2> g;
 
         Tuner_map add_to_map;
 

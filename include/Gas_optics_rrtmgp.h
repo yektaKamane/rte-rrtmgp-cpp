@@ -392,6 +392,7 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
 
         // Longwave variant.
         void gas_optics(
+                const int igpt,
                 const Array_gpu<TF,2>& play,
                 const Array_gpu<TF,2>& plev,
                 const Array_gpu<TF,2>& tlay,
@@ -404,12 +405,13 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
 
         // shortwave variant
         void gas_optics(
+                const int igpt,
                 const Array_gpu<TF,2>& play,
                 const Array_gpu<TF,2>& plev,
                 const Array_gpu<TF,2>& tlay,
                 const Gas_concs_gpu<TF>& gas_desc,
                 std::unique_ptr<Optical_props_arry_gpu<TF>>& optical_props,
-                Array_gpu<TF,2>& toa_src,
+                Array_gpu<TF,1>& toa_src,
                 const Array_gpu<TF,2>& col_dry);
 
     private:
@@ -467,6 +469,7 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
 
         Array<TF,4> krayl;
 
+        int idx_h2o;
         #ifdef USECUDA
         Array_gpu<TF,1> solar_source_g;
         Array_gpu<TF,2> totplnk_gpu;
@@ -494,6 +497,17 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
         Array_gpu<int,1> idx_minor_scaling_upper_gpu;
         Array_gpu<TF,1> solar_source_gpu;
         Array_gpu<TF,4> krayl_gpu;
+        Array_gpu<int,2> jtemp;
+        Array_gpu<int,2> jpress;;
+        Array_gpu<BOOL_TYPE,2> tropo;
+        Array_gpu<TF,6> fmajor;
+        Array_gpu<int,4> jeta;
+        Array_gpu<TF,3> vmr;
+        Array_gpu<TF,3> col_gas;
+        Array_gpu<TF,4> col_mix;
+        Array_gpu<TF,5> fminor;
+        Array_gpu<TF,3> scalings_lower;
+        Array_gpu<TF,3> scalings_upper;
         #endif
 
         int get_ngas() const { return this->gas_names.dim(1); }
@@ -534,7 +548,7 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
                 const TF md_index, const TF sb_index);
 
         void compute_gas_taus(
-                const int ncol, const int nlay, const int ngpt, const int nband,
+                const int ncol, const int nlay, const int ngpt, const int nband, const int igpt,
                 const Array_gpu<TF,2>& play,
                 const Array_gpu<TF,2>& plev,
                 const Array_gpu<TF,2>& tlay,
@@ -547,12 +561,12 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
                 const Array_gpu<TF,2>& col_dry);
 
         void combine_abs_and_rayleigh(
-                const Array_gpu<TF,3>& tau,
-                const Array_gpu<TF,3>& tau_rayleigh,
+                const Array_gpu<TF,2>& tau,
+                const Array_gpu<TF,2>& tau_rayleigh,
                 std::unique_ptr<Optical_props_arry_gpu<TF>>& optical_props);
 
         void source(
-                const int ncol, const int nlay, const int nband, const int ngpt,
+                const int ncol, const int nlay, const int nband, const int ngpt, const int igpt,
                 const Array_gpu<TF,2>& play, const Array_gpu<TF,2>& plev,
                 const Array_gpu<TF,2>& tlay, const Array_gpu<TF,1>& tsfc,
                 const Array_gpu<int,2>& jtemp, const Array_gpu<int,2>& jpress,

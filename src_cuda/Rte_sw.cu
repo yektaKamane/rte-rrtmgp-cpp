@@ -120,23 +120,20 @@ void Rte_sw_gpu<TF>::rte_sw(
         const std::unique_ptr<Optical_props_arry_gpu<TF>>& optical_props,
         const BOOL_TYPE top_at_1,
         const Array_gpu<TF,1>& mu0,
-        const Array_gpu<TF,2>& inc_flux_dir,
+        const Array_gpu<TF,1>& inc_flux_dir,
         const Array_gpu<TF,2>& sfc_alb_dir,
         const Array_gpu<TF,2>& sfc_alb_dif,
-        const Array_gpu<TF,2>& inc_flux_dif,
-        Array_gpu<TF,3>& gpt_flux_up,
-        Array_gpu<TF,3>& gpt_flux_dn,
-        Array_gpu<TF,3>& gpt_flux_dir)
+        const Array_gpu<TF,1>& inc_flux_dif,
+        Array_gpu<TF,2>& gpt_flux_up,
+        Array_gpu<TF,2>& gpt_flux_dn,
+        Array_gpu<TF,2>& gpt_flux_dir)
 {
     const int ncol = optical_props->get_ncol();
     const int nlay = optical_props->get_nlay();
     const int ngpt = optical_props->get_ngpt();
 
-    Array_gpu<TF,2> sfc_alb_dir_gpt({ncol, ngpt});
-    Array_gpu<TF,2> sfc_alb_dif_gpt({ncol, ngpt});
-
-    expand_and_transpose(optical_props, sfc_alb_dir, sfc_alb_dir_gpt);
-    expand_and_transpose(optical_props, sfc_alb_dif, sfc_alb_dif_gpt);
+ //   expand_and_transpose(optical_props, sfc_alb_dir, sfc_alb_dir_gpt);
+ //   expand_and_transpose(optical_props, sfc_alb_dif, sfc_alb_dif_gpt);
 
     // Upper boundary condition. At this stage, flux_dn contains the diffuse radiation only.
     rte_kernel_launcher_cuda::apply_BC(ncol, nlay, ngpt, top_at_1, inc_flux_dir, mu0, gpt_flux_dir);
@@ -153,7 +150,7 @@ void Rte_sw_gpu<TF>::rte_sw(
             optical_props->get_ssa(),
             optical_props->get_g  (),
             mu0,
-            sfc_alb_dir_gpt, sfc_alb_dif_gpt,
+            sfc_alb_dir, sfc_alb_dif,
             gpt_flux_up, gpt_flux_dn, gpt_flux_dir,
             sw_solver_2stream_map);
 

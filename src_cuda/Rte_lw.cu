@@ -84,9 +84,9 @@ void Rte_lw_gpu<TF>::rte_lw(
         const BOOL_TYPE top_at_1,
         const Source_func_lw_gpu<TF>& sources,
         const Array_gpu<TF,2>& sfc_emis,
-        const Array_gpu<TF,2>& inc_flux,
-        Array_gpu<TF,3>& gpt_flux_up,
-        Array_gpu<TF,3>& gpt_flux_dn,
+        const Array_gpu<TF,1>& inc_flux,
+        Array_gpu<TF,2>& gpt_flux_up,
+        Array_gpu<TF,2>& gpt_flux_dn,
         const int n_gauss_angles)
 {
     const int max_gauss_pts = 4;
@@ -108,10 +108,6 @@ void Rte_lw_gpu<TF>::rte_lw(
     const int nlay = optical_props->get_nlay();
     const int ngpt = optical_props->get_ngpt();
 
-    Array_gpu<TF,2> sfc_emis_gpt({ncol, ngpt});
-
-    expand_and_transpose(optical_props, sfc_emis, sfc_emis_gpt);
-
     // Upper boundary condition.
     if (inc_flux.size() == 0)
         rte_kernel_launcher_cuda::apply_BC(ncol, nlay, ngpt, top_at_1, gpt_flux_dn);
@@ -127,8 +123,8 @@ void Rte_lw_gpu<TF>::rte_lw(
             {{ {1, n_quad_angs}, {n_quad_angs, n_quad_angs} }});
 
     // For now, just pass the arrays around.
-    Array_gpu<TF,2> sfc_src_jac(sources.get_sfc_source().get_dims());
-    Array_gpu<TF,3> gpt_flux_up_jac(gpt_flux_up.get_dims());
+    Array_gpu<TF,1> sfc_src_jac(sources.get_sfc_source().get_dims());
+    Array_gpu<TF,2> gpt_flux_up_jac(gpt_flux_up.get_dims());
 
     rte_kernel_launcher_cuda::lw_solver_noscat_gaussquad(
             ncol, nlay, ngpt, top_at_1, n_quad_angs,
@@ -136,7 +132,7 @@ void Rte_lw_gpu<TF>::rte_lw(
             optical_props->get_tau(),
             sources.get_lay_source(),
             sources.get_lev_source_inc(), sources.get_lev_source_dec(),
-            sfc_emis_gpt, sources.get_sfc_source(),
+            sfc_emis, sources.get_sfc_source(),
             gpt_flux_up, gpt_flux_dn,
             sfc_src_jac, gpt_flux_up_jac,
             rte_lw_map);

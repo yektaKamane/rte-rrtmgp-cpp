@@ -90,7 +90,7 @@ Optical_props_1scl_gpu<TF>::Optical_props_1scl_gpu(
         const int nlay,
         const Optical_props_gpu<TF>& optical_props_gpu) :
     Optical_props_arry_gpu<TF>(optical_props_gpu),
-    tau({ncol, nlay, this->get_ngpt()})
+    tau({ncol, nlay})
 {}
 
 
@@ -101,9 +101,9 @@ Optical_props_2str_gpu<TF>::Optical_props_2str_gpu(
         const int nlay,
         const Optical_props_gpu<TF>& optical_props_gpu) :
     Optical_props_arry_gpu<TF>(optical_props_gpu),
-    tau({ncol, nlay, this->get_ngpt()}),
-    ssa({ncol, nlay, this->get_ngpt()}),
-    g  ({ncol, nlay, this->get_ngpt()})
+    tau({ncol, nlay}),
+    ssa({ncol, nlay}),
+    g  ({ncol, nlay})
 {}
 
 

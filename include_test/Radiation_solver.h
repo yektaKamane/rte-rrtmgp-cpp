@@ -167,7 +167,7 @@ class Radiation_solver_shortwave
                 const Gas_concs_gpu<TF>& gas_concs,
                 const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
                 const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
-                const Array_gpu<TF,2>& col_dry,
+                Array_gpu<TF,2>& col_dry,
                 const Array_gpu<TF,2>& sfc_alb_dir, const Array_gpu<TF,2>& sfc_alb_dif,
                 const Array_gpu<TF,1>& tsi_scaling, const Array_gpu<TF,1>& mu0,
                 const Array_gpu<TF,2>& lwp, const Array_gpu<TF,2>& iwp,
@@ -200,11 +200,9 @@ class Radiation_solver_shortwave
         std::unique_ptr<Cloud_optics_gpu<TF>> cloud_optics_gpu;
         Rte_sw_gpu<TF> rte_sw;
 
-        std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props_subset;
-        std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props_residual;
+        std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props;
 
-        std::unique_ptr<Optical_props_2str_gpu<TF>> cloud_optical_props_subset;
-        std::unique_ptr<Optical_props_2str_gpu<TF>> cloud_optical_props_residual;
+        std::unique_ptr<Optical_props_2str_gpu<TF>> cloud_optical_props;
         #endif
 };
 #endif

@@ -18,47 +18,38 @@ namespace rte_kernel_launcher_cuda
 {
     template<typename TF>
     void apply_BC(const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1,
-                  const Array_gpu<TF,2>& inc_flux_dir, const Array_gpu<TF,1>& mu0, Array_gpu<TF,3>& gpt_flux_dir)
+                  const Array_gpu<TF,1>& inc_flux_dir, const Array_gpu<TF,1>& mu0, Array_gpu<TF,2>& gpt_flux_dir)
     {
         const int block_col = 32;
-        const int block_gpt = 32;
-
         const int grid_col = ncol/block_col + (ncol%block_col > 0);
-        const int grid_gpt = ngpt/block_gpt + (ngpt%block_gpt > 0);
 
-        dim3 grid_gpu(grid_col, grid_gpt);
-        dim3 block_gpu(block_col, block_gpt);
+        dim3 grid_gpu(grid_col);
+        dim3 block_gpu(block_col);
         apply_BC_kernel<<<grid_gpu, block_gpu>>>(ncol, nlay, ngpt, top_at_1, inc_flux_dir.ptr(), mu0.ptr(), gpt_flux_dir.ptr());
 
     }
 
 
     template<typename TF>
-    void apply_BC(const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, Array_gpu<TF,3>& gpt_flux_dn)
+    void apply_BC(const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, Array_gpu<TF,2>& gpt_flux_dn)
     {
         const int block_col = 32;
-        const int block_gpt = 32;
-
         const int grid_col = ncol/block_col + (ncol%block_col > 0);
-        const int grid_gpt = ngpt/block_gpt + (ngpt%block_gpt > 0);
 
-        dim3 grid_gpu(grid_col, grid_gpt);
-        dim3 block_gpu(block_col, block_gpt);
+        dim3 grid_gpu(grid_col);
+        dim3 block_gpu(block_col);
         apply_BC_kernel<<<grid_gpu, block_gpu>>>(ncol, nlay, ngpt, top_at_1, gpt_flux_dn.ptr());
     }
 
 
     template<typename TF>
-    void apply_BC(const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, const Array_gpu<TF,2>& inc_flux_dif, Array_gpu<TF,3>& gpt_flux_dn)
+    void apply_BC(const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, const Array_gpu<TF,1>& inc_flux_dif, Array_gpu<TF,2>& gpt_flux_dn)
     {
         const int block_col = 32;
-        const int block_gpt = 32;
-
         const int grid_col = ncol/block_col + (ncol%block_col > 0);
-        const int grid_gpt = ngpt/block_gpt + (ngpt%block_gpt > 0);
 
-        dim3 grid_gpu(grid_col, grid_gpt);
-        dim3 block_gpu(block_col, block_gpt);
+        dim3 grid_gpu(grid_col);
+        dim3 block_gpu(block_col);
         apply_BC_kernel<<<grid_gpu, block_gpu>>>(ncol, nlay, ngpt, top_at_1, inc_flux_dif.ptr(), gpt_flux_dn.ptr());
     }
 
@@ -66,10 +57,10 @@ namespace rte_kernel_launcher_cuda
     template<typename TF>
     void lw_solver_noscat_gaussquad(
             const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, const int nmus,
-            const Array_gpu<TF,2>& ds, const Array_gpu<TF,2>& weights, const Array_gpu<TF,3>& tau, const Array_gpu<TF,3> lay_source,
-            const Array_gpu<TF,3>& lev_source_inc, const Array_gpu<TF,3>& lev_source_dec, const Array_gpu<TF,2>& sfc_emis,
-            const Array_gpu<TF,2>& sfc_src, Array_gpu<TF,3>& flux_up, Array_gpu<TF,3>& flux_dn,
-            const Array_gpu<TF,2>& sfc_src_jac, Array_gpu<TF,3>& flux_up_jac,
+            const Array_gpu<TF,2>& ds, const Array_gpu<TF,2>& weights, const Array_gpu<TF,2>& tau, const Array_gpu<TF,2> lay_source,
+            const Array_gpu<TF,2>& lev_source_inc, const Array_gpu<TF,2>& lev_source_dec, const Array_gpu<TF,2>& sfc_emis,
+            const Array_gpu<TF,1>& sfc_src, Array_gpu<TF,2>& flux_up, Array_gpu<TF,2>& flux_dn,
+            const Array_gpu<TF,1>& sfc_src_jac, Array_gpu<TF,2>& flux_up_jac,
             Tuner_map& tunings)
     {
         TF eps = std::numeric_limits<TF>::epsilon();
@@ -88,6 +79,21 @@ namespace rte_kernel_launcher_cuda
         Array_gpu<TF,2> radn_dn(flux_dn.get_dims());
         Array_gpu<TF,2> radn_up(flux_dn.get_dims());
         Array_gpu<TF,2> radn_up_jac(flux_dn.get_dims());
+
+        const int block_col1d = 64;
+        const int grid_col1d = ncol/block_col1d + (ncol%block_col1d > 0);
+
+        dim3 grid_gpu1d(grid_col1d, 1, 1);
+        dim3 block_gpu1d(block_col1d, 1, 1);
+
+        const int block_col2d = 96;
+        const int block_lay2d = 1;
+
+        const int grid_col2d = ncol/block_col2d + (ncol%block_col2d > 0);
+        const int grid_lay2d = (nlay+1)/block_lay2d + ((nlay+1)%block_lay2d > 0);
+
+        dim3 grid_gpu2d(grid_col2d, grid_lay2d, 1);
+        dim3 block_gpu2d(block_col2d, block_lay2d, 1);
 
         const int top_level = top_at_1 ? 0 : nlay;
 
@@ -174,7 +180,7 @@ namespace rte_kernel_launcher_cuda
                 lev_source_inc.ptr(), lev_source_dec.ptr(), sfc_emis.ptr(), sfc_src.ptr(), flux_up.ptr(), flux_dn.ptr(), sfc_src_jac.ptr(),
                 flux_up_jac.ptr(), tau_loc.ptr(), trans.ptr(), source_dn.ptr(), source_up.ptr(), source_sfc.ptr(), sfc_albedo.ptr(), source_sfc_jac.ptr());
 
-        apply_BC_kernel_lw<<<grid_gpu2d, block_gpu2d>>>(top_level, ncol, nlay, ngpt, top_at_1, flux_dn.ptr(), radn_dn.ptr());
+        apply_BC_kernel_lw<<<grid_gpu1d, block_gpu1d>>>(top_level, ncol, nlay, ngpt, top_at_1, flux_dn.ptr(), radn_dn.ptr());
 
         if (nmus > 1)
         {
@@ -195,7 +201,7 @@ namespace rte_kernel_launcher_cuda
                         lev_source_inc.ptr(), lev_source_dec.ptr(), sfc_emis.ptr(), sfc_src.ptr(), radn_up.ptr(), radn_dn.ptr(), sfc_src_jac.ptr(),
                         radn_up_jac.ptr(), tau_loc.ptr(), trans.ptr(), source_dn.ptr(), source_up.ptr(), source_sfc.ptr(), sfc_albedo.ptr(), source_sfc_jac.ptr());
 
-                add_fluxes_kernel<<<grid_gpu3d, block_gpu3d>>>(
+                add_fluxes_kernel<<<grid_gpu2d, block_gpu2d>>>(
                         ncol, nlay+1, ngpt,
                         radn_up.ptr(), radn_dn.ptr(), radn_up_jac.ptr(),
                         flux_up.ptr(), flux_dn.ptr(), flux_up_jac.ptr());
@@ -206,9 +212,9 @@ namespace rte_kernel_launcher_cuda
 
     template<typename TF>
     void sw_solver_2stream(const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1,
-                           const Array_gpu<TF,3>& tau, const Array_gpu<TF,3>& ssa, const Array_gpu<TF,3>& g,
+                           const Array_gpu<TF,2>& tau, const Array_gpu<TF,2>& ssa, const Array_gpu<TF,2>& g,
                            const Array_gpu<TF,1>& mu0, const Array_gpu<TF,2>& sfc_alb_dir, const Array_gpu<TF,2>& sfc_alb_dif,
-                           Array_gpu<TF,3>& flux_up, Array_gpu<TF,3>& flux_dn, Array_gpu<TF,3>& flux_dir,
+                           Array_gpu<TF,2>& flux_up, Array_gpu<TF,2>& flux_dn, Array_gpu<TF,2>& flux_dir,
                            Tuner_map& tunings)
     {
         const int opt_size = tau.size();
@@ -343,40 +349,40 @@ namespace rte_kernel_launcher_cuda
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
 template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE,
-                  const Array_gpu<float,2>&, const Array_gpu<float,1>&, Array_gpu<float,3>&);
-template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE, Array_gpu<float,3>&);
+                  const Array_gpu<float,1>&, const Array_gpu<float,1>&, Array_gpu<float,2>&);
+template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE, Array_gpu<float,2>&);
 template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE,
-                  const Array_gpu<float,2>&, Array_gpu<float,3>&);
+                  const Array_gpu<float,1>&, Array_gpu<float,2>&);
 
 template void rte_kernel_launcher_cuda::sw_solver_2stream<float>(
             const int, const int, const int, const BOOL_TYPE,
-            const Array_gpu<float,3>&, const Array_gpu<float,3>&, const Array_gpu<float,3>&,
+            const Array_gpu<float,2>&, const Array_gpu<float,2>&, const Array_gpu<float,2>&,
             const Array_gpu<float,1>&, const Array_gpu<float,2>&, const Array_gpu<float,2>&,
-            Array_gpu<float,3>&, Array_gpu<float,3>&, Array_gpu<float,3>&, Tuner_map& tunings);
+            Array_gpu<float,2>&, Array_gpu<float,2>&, Array_gpu<float,2>&, Tuner_map& tunings);
 
 template void rte_kernel_launcher_cuda::lw_solver_noscat_gaussquad<float>(
             const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, const int nmus,
-            const Array_gpu<float,2>& ds, const Array_gpu<float,2>& weights, const Array_gpu<float,3>& tau, const Array_gpu<float,3> lay_source,
-            const Array_gpu<float,3>& lev_source_inc, const Array_gpu<float,3>& lev_source_dec, const Array_gpu<float,2>& sfc_emis,
-            const Array_gpu<float,2>& sfc_src, Array_gpu<float,3>& flux_dn, Array_gpu<float,3>& flux_up,
-            const Array_gpu<float,2>& sfc_src_jac, Array_gpu<float,3>& flux_up_jac, Tuner_map& tunings);
+            const Array_gpu<float,2>& ds, const Array_gpu<float,2>& weights, const Array_gpu<float,2>& tau, const Array_gpu<float,2> lay_source,
+            const Array_gpu<float,2>& lev_source_inc, const Array_gpu<float,2>& lev_source_dec, const Array_gpu<float,2>& sfc_emis,
+            const Array_gpu<float,1>& sfc_src, Array_gpu<float,2>& flux_dn, Array_gpu<float,2>& flux_up,
+            const Array_gpu<float,1>& sfc_src_jac, Array_gpu<float,2>& flux_up_jac, Tuner_map& tunings);
 #else
 template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE,
-                  const Array_gpu<double,2>&, const Array_gpu<double,1>&, Array_gpu<double,3>&);
-template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE, Array_gpu<double,3>&);
+                  const Array_gpu<double,1>&, const Array_gpu<double,1>&, Array_gpu<double,2>&);
+template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE, Array_gpu<double,2>&);
 template void rte_kernel_launcher_cuda::apply_BC(const int, const int, const int, const BOOL_TYPE,
-                  const Array_gpu<double,2>&, Array_gpu<double,3>&);
+                  const Array_gpu<double,1>&, Array_gpu<double,2>&);
 
 template void rte_kernel_launcher_cuda::sw_solver_2stream<double>(
             const int, const int, const int, const BOOL_TYPE,
-            const Array_gpu<double,3>&, const Array_gpu<double,3>&, const Array_gpu<double,3>&,
+            const Array_gpu<double,2>&, const Array_gpu<double,2>&, const Array_gpu<double,2>&,
             const Array_gpu<double,1>&, const Array_gpu<double,2>&, const Array_gpu<double,2>&,
-            Array_gpu<double,3>&, Array_gpu<double,3>&, Array_gpu<double,3>&, Tuner_map& tunings);
+            Array_gpu<double,2>&, Array_gpu<double,2>&, Array_gpu<double,2>&, Tuner_map& tunings);
 
 template void rte_kernel_launcher_cuda::lw_solver_noscat_gaussquad<double>(
             const int ncol, const int nlay, const int ngpt, const BOOL_TYPE top_at_1, const int nmus,
-            const Array_gpu<double,2>& ds, const Array_gpu<double,2>& weights, const Array_gpu<double,3>& tau, const Array_gpu<double,3> lay_source,
-            const Array_gpu<double,3>& lev_source_inc, const Array_gpu<double,3>& lev_source_dec, const Array_gpu<double,2>& sfc_emis,
-            const Array_gpu<double,2>& sfc_src, Array_gpu<double,3>& flux_up, Array_gpu<double,3>& flux_dn,
-            const Array_gpu<double,2>& sfc_src_jac,Array_gpu<double,3>& flux_up_jac, Tuner_map& tunings);
+            const Array_gpu<double,2>& ds, const Array_gpu<double,2>& weights, const Array_gpu<double,2>& tau, const Array_gpu<double,2> lay_source,
+            const Array_gpu<double,2>& lev_source_inc, const Array_gpu<double,2>& lev_source_dec, const Array_gpu<double,2>& sfc_emis,
+            const Array_gpu<double,1>& sfc_src, Array_gpu<double,2>& flux_up, Array_gpu<double,2>& flux_dn,
+            const Array_gpu<double,1>& sfc_src_jac,Array_gpu<double,2>& flux_up_jac, Tuner_map& tunings);
 #endif

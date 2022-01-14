@@ -178,6 +178,25 @@ Fluxes_broadband_gpu<TF>::Fluxes_broadband_gpu(const int ncol, const int nlev) :
 {}
 
 template<typename TF>
+void Fluxes_broadband_gpu<TF>::net_flux()
+{
+    const int ncol = this->flux_dn.dim(1);
+    const int nlev = this->flux_dn.dim(2);
+
+    const int block_lev = 16;
+    const int block_col = 16;
+
+    const int grid_col = ncol/block_col + (ncol%block_col > 0);
+    const int grid_lev = nlev/block_lev + (nlev%block_lev > 0);
+
+    dim3 grid_gpu(grid_col, grid_lev);
+    dim3 block_gpu(block_col, block_lev);
+
+    net_broadband_precalc<<<grid_gpu, block_gpu>>>(
+            ncol, nlev, this->flux_dn.ptr(), this->flux_up.ptr(), this->flux_net.ptr());
+}
+
+template<typename TF>
 void Fluxes_broadband_gpu<TF>::reduce(
     const Array_gpu<TF,3>& gpt_flux_up, const Array_gpu<TF,3>& gpt_flux_dn,
     const std::unique_ptr<Optical_props_arry_gpu<TF>>& spectral_disc,

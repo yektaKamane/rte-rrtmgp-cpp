@@ -127,6 +127,20 @@ void zero_array_kernel(
     }
 }
 
+template<typename TF> __global__
+void zero_array_kernel(
+        const int ni, const int nj,
+        TF* __restrict__ arr)
+{
+    const int ii = blockIdx.x*blockDim.x + threadIdx.x;
+    const int ij = blockIdx.y*blockDim.y + threadIdx.y;
+
+    if ( (ii < ni) && (ij < nj))
+    {
+        const int idx = ii + ij*ni;
+        arr[idx] = TF(0.);
+    }
+}
 
 template<typename TF> __global__
 void Planck_source_kernel(
@@ -177,8 +191,8 @@ void Planck_source_kernel(
         const TF planck_function_lev1 = interpolate1D(tlev[idx_tmp1], temp_ref_min, totplnk_delta, nPlanckTemp, &totplnk[ibnd * nPlanckTemp]);
         const TF planck_function_lev2 = interpolate1D(tlev[idx_tmp2], temp_ref_min, totplnk_delta, nPlanckTemp, &totplnk[ibnd * nPlanckTemp]);
 
-        const int idx = icol + ilay*ncol + igpt*ncol*nlay;
-        const int idx_sfc = icol + igpt*ncol;
+        const int idx = icol + ilay*ncol;
+        const int idx_sfc = icol;
 
         const TF pfrac_loc =
               (fmajor[idx_fcl3+0] * pfracin[(jtemp_idx-1) + (j0-1)*ntemp + (jpress_idx-1)*ntemp*neta + igpt*ntemp*neta*(npres+1)] +
@@ -325,9 +339,15 @@ void gas_optical_depths_major_kernel(
 
         const TF* __restrict__ ifmajor = &fmajor[idx_fcl3];
 
-        const int idx_out = icol + ilay*ncol + igpt*ncol*nlay;
-
-        // un-unrolling this loops saves registers and improves parallelism/utilization.
+        const int idx_out = icol + ilay*ncol;
+        if (threadIdx.x==0 && blockIdx.x ==0 && blockIdx.y ==0 && threadIdx.y ==0)
+        {
+        for (int i=0; i<2; ++i) 
+        {    printf("X %d %d %d %d %d %d\n",idx_fcl1,idx_fcl3,(ljtemp-1+i) + (jeta[idx_fcl1+i]-1)*ntemp + (jpressi-1)*ntemp*neta + igpt*ntemp*neta*npress,
+            (ljtemp-1+i) +  jeta[idx_fcl1+i]   *ntemp + (jpressi-1)*ntemp*neta + igpt*ntemp*neta*npress,
+            (ljtemp-1+i) + (jeta[idx_fcl1+i]-1)*ntemp + jpressi    *ntemp*neta + igpt*ntemp*neta*npress,
+            (ljtemp-1+i) +  jeta[idx_fcl1+i]   *ntemp + jpressi    *ntemp*neta + igpt*ntemp*neta*npress);
+        }}// un-unrolling this loops saves registers and improves parallelism/utilization.
         #pragma unroll 1
         for (int i=0; i<2; ++i)
         {
@@ -446,7 +466,7 @@ void gas_optical_depths_minor_kernel(
             const int j1 = jeta[idx_fcl1+1];
             const int kjtemp = jtemp[idx_collay];
 
-            const int idx_out = icol + ilay*ncol + igpt*ncol*nlay;
+            const int idx_out = icol + ilay*ncol;
             for (int imnr=minor_start; imnr<=minor_end; ++imnr)
             {
                 const int idx_scl = icol + ilay*ncol + imnr*ncol*nlay;
@@ -508,7 +528,7 @@ void compute_tau_rayleigh_kernel(
                         fminor[idx_fcl2+2] * krayl[idx_krayl + (jtempl  ) + (j1-1)*ntemp + igpt*ntemp*neta] +
                         fminor[idx_fcl2+3] * krayl[idx_krayl + (jtempl  ) +  j1   *ntemp + igpt*ntemp*neta];
 
-        const int idx_out = icol + ilay*ncol + igpt*ncol*nlay;
+        const int idx_out = icol + ilay*ncol;
         tau_rayleigh[idx_out] = kloc * (col_gas[idx_collaywv] + col_dry[idx_collay]);
     }
 }
@@ -516,7 +536,7 @@ void compute_tau_rayleigh_kernel(
 
 template<typename TF> __global__
 void combine_abs_and_rayleigh_kernel(
-        const int ncol, const int nlay, const int ngpt, const TF tmin, const int igpt,
+        const int ncol, const int nlay, const TF tmin,
         const TF* __restrict__ tau_abs, const TF* __restrict__ tau_rayleigh,
         TF* __restrict__ tau, TF* __restrict__ ssa, TF* __restrict__ g)
 {
@@ -526,7 +546,7 @@ void combine_abs_and_rayleigh_kernel(
 
     if ( (icol < ncol) && (ilay < nlay) )
     {
-        const int idx = icol + ilay*ncol + igpt*ncol*nlay;
+        const int idx = icol + ilay*ncol;
 
         const TF tau_tot = tau_abs[idx] + tau_rayleigh[idx];
 

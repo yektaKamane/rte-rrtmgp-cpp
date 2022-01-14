@@ -87,24 +87,24 @@ class Source_func_lw_gpu : public Optical_props_gpu<TF>
 //                const Source_func_lw<TF>& sources_sub,
 //                const int col_s, const int col_e);
 //
-        Array_gpu<TF,2>& get_sfc_source()     { return sfc_source;     }
-        Array_gpu<TF,2>& get_sfc_source_jac() { return sfc_source_jac; }
-        Array_gpu<TF,3>& get_lay_source()     { return lay_source;     }
-        Array_gpu<TF,3>& get_lev_source_inc() { return lev_source_inc; }
-        Array_gpu<TF,3>& get_lev_source_dec() { return lev_source_dec; }
+        Array_gpu<TF,1>& get_sfc_source()     { return sfc_source;     }
+        Array_gpu<TF,1>& get_sfc_source_jac() { return sfc_source_jac; }
+        Array_gpu<TF,2>& get_lay_source()     { return lay_source;     }
+        Array_gpu<TF,2>& get_lev_source_inc() { return lev_source_inc; }
+        Array_gpu<TF,2>& get_lev_source_dec() { return lev_source_dec; }
 
-        const Array_gpu<TF,2>& get_sfc_source()     const { return sfc_source;     }
-        const Array_gpu<TF,2>& get_sfc_source_jac() const { return sfc_source_jac; }
-        const Array_gpu<TF,3>& get_lay_source()     const { return lay_source;     }
-        const Array_gpu<TF,3>& get_lev_source_inc() const { return lev_source_inc; }
-        const Array_gpu<TF,3>& get_lev_source_dec() const { return lev_source_dec; }
+        const Array_gpu<TF,1>& get_sfc_source()     const { return sfc_source;     }
+        const Array_gpu<TF,1>& get_sfc_source_jac() const { return sfc_source_jac; }
+        const Array_gpu<TF,2>& get_lay_source()     const { return lay_source;     }
+        const Array_gpu<TF,2>& get_lev_source_inc() const { return lev_source_inc; }
+        const Array_gpu<TF,2>& get_lev_source_dec() const { return lev_source_dec; }
 
     private:
-        Array_gpu<TF,2> sfc_source;
-        Array_gpu<TF,2> sfc_source_jac;
-        Array_gpu<TF,3> lay_source;
-        Array_gpu<TF,3> lev_source_inc;
-        Array_gpu<TF,3> lev_source_dec;
+        Array_gpu<TF,1> sfc_source;
+        Array_gpu<TF,1> sfc_source_jac;
+        Array_gpu<TF,2> lay_source;
+        Array_gpu<TF,2> lev_source_inc;
+        Array_gpu<TF,2> lev_source_dec;
 };
 
 #endif

@@ -48,6 +48,9 @@ namespace rrtmgp_kernel_launcher_cuda
 
     template<typename TF>
     void zero_array(const int ni, const int nj, const int nk, Array_gpu<TF,3>& arr);
+    
+    template<typename TF>
+    void zero_array(const int ni, const int nj, Array_gpu<TF,2>& arr);
 
     template<typename TF>
     void interpolation(
@@ -98,13 +101,13 @@ namespace rrtmgp_kernel_launcher_cuda
     
     template<typename TF>
     void combine_abs_and_rayleigh(
-            const int ncol, const int nlay, const int ngpt,
-            const Array_gpu<TF,3>& tau_local, const Array_gpu<TF,3>& tau_rayleigh,
-            Array_gpu<TF,3>& tau, Array_gpu<TF,3>& ssa, Array_gpu<TF,3>& g, Tuner_map&);
+            const int ncol, const int nlay,
+            const Array_gpu<TF,2>& tau_local, const Array_gpu<TF,2>& tau_rayleigh,
+            Array_gpu<TF,2>& tau, Array_gpu<TF,2>& ssa, Array_gpu<TF,2>& g, Tuner_map&);
 
     template<typename TF>
     void compute_tau_rayleigh(
-            const int ncol, const int nlay, const int nband, const int ngpt,
+            const int ncol, const int nlay, const int nband, const int ngpt, const int igpt,
             const int ngas, const int nflav, const int neta, const int npres, const int ntemp,
             const Array_gpu<int, 2>& gpoint_flavor,
             const Array_gpu<int, 1>& gpoint_bands,
@@ -113,12 +116,12 @@ namespace rrtmgp_kernel_launcher_cuda
             int idx_h2o, const Array_gpu<TF,2>& col_dry, const Array_gpu<TF,3>& col_gas,
             const Array_gpu<TF,5>& fminor, const Array_gpu<int,4>& jeta,
             const Array_gpu<BOOL_TYPE,2>& tropo, const Array_gpu<int,2>& jtemp,
-            Array_gpu<TF,3>& tau_rayleigh,
+            Array_gpu<TF,2>& tau_rayleigh,
             Tuner_map& tunings);
 
     template<typename TF>
     void compute_tau_absorption(
-            const int ncol, const int nlay, const int nband, const int ngpt,
+            const int ncol, const int nlay, const int nband, const int ngpt, const int igpt,
             const int ngas, const int nflav, const int neta, const int npres, const int ntemp,
             const int nminorlower, const int nminorklower,
             const int nminorupper, const int nminorkupper,
@@ -150,12 +153,12 @@ namespace rrtmgp_kernel_launcher_cuda
             const Array_gpu<int,2>& jpress, 
             const Array_gpu<TF,3>& scalings_lower,
             const Array_gpu<TF,3>& scalings_upper,
-            Array_gpu<TF,3>& tau,
+            Array_gpu<TF,2>& tau,
             Tuner_map& tunings);
 
     template<typename TF>
     void Planck_source(
-            const int ncol, const int nlay, const int nbnd, const int ngpt,
+            const int ncol, const int nlay, const int nbnd, const int ngpt, const int igpt,
             const int nflav, const int neta, const int npres, const int ntemp,
             const int nPlanckTemp,
             const Array_gpu<TF,2>& tlay,
@@ -173,11 +176,11 @@ namespace rrtmgp_kernel_launcher_cuda
             const TF temp_ref_min, const TF totplnk_delta,
             const Array_gpu<TF,2>& totplnk,
             const Array_gpu<int,2>& gpoint_flavor,
-            Array_gpu<TF,2>& sfc_src,
-            Array_gpu<TF,3>& lay_src,
-            Array_gpu<TF,3>& lev_src_inc,
-            Array_gpu<TF,3>& lev_src_dec,
-            Array_gpu<TF,2>& sfc_src_jac,
+            Array_gpu<TF,1>& sfc_src,
+            Array_gpu<TF,2>& lay_src,
+            Array_gpu<TF,2>& lev_src_inc,
+            Array_gpu<TF,2>& lev_src_dec,
+            Array_gpu<TF,1>& sfc_src_jac,
             Tuner_map& tunings);
 }
 #endif
