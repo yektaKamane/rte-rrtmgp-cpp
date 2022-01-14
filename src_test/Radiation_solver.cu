@@ -465,38 +465,38 @@ void Radiation_solver_longwave<TF>::solve_gpu(
         }
 
 
-        if (!switch_fluxes)
-            return;
-        
-        constexpr int n_ang = 1;
-
-        std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
-                std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
-
-        rte_lw.rte_lw(
-                optical_props,
-                top_at_1,
-                *sources,
-                emis_sfc.subset({{ {band, band}, {1, n_col}}}),
-                Array_gpu<TF,1>(), // Add an empty array, no inc_flux.
-                (*fluxes).get_flux_up(),
-                (*fluxes).get_flux_dn(),
-                n_ang);
-
-        (*fluxes).net_flux();
-        
-        // Copy the data to the output.
-        gpoint_kernel_launcher_cuda::add_from_gpoint(
-                n_col, n_lev, lw_flux_up, lw_flux_dn, lw_flux_net,
-                (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_net());
-
-
-        if (switch_output_bnd_fluxes)
+        if (switch_fluxes)
         {
-            gpoint_kernel_launcher_cuda::get_from_gpoint(
-                    n_col, n_lev, igpt-1, lw_bnd_flux_up, lw_bnd_flux_dn, lw_bnd_flux_net,
+            constexpr int n_ang = 1;
+
+            std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
+                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
+
+            rte_lw.rte_lw(
+                    optical_props,
+                    top_at_1,
+                    *sources,
+                    emis_sfc.subset({{ {band, band}, {1, n_col}}}),
+                    Array_gpu<TF,1>(), // Add an empty array, no inc_flux.
+                    (*fluxes).get_flux_up(),
+                    (*fluxes).get_flux_dn(),
+                    n_ang);
+
+            (*fluxes).net_flux();
+            
+            // Copy the data to the output.
+            gpoint_kernel_launcher_cuda::add_from_gpoint(
+                    n_col, n_lev, lw_flux_up, lw_flux_dn, lw_flux_net,
                     (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_net());
 
+
+            if (switch_output_bnd_fluxes)
+            {
+                gpoint_kernel_launcher_cuda::get_from_gpoint(
+                        n_col, n_lev, igpt-1, lw_bnd_flux_up, lw_bnd_flux_dn, lw_bnd_flux_net,
+                        (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_net());
+
+            }
         }
     }
 }
@@ -613,35 +613,35 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             gpoint_kernel_launcher_cuda::get_from_gpoint(
                     n_col, igpt-1, toa_source, toa_src);
         }
-        if (!switch_fluxes)
-            return;
+        if (switch_fluxes)
+        {  
+            std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
+                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
+            
+            rte_sw.rte_sw(
+                    optical_props,
+                    top_at_1,
+                    mu0,
+                    toa_src,
+                    sfc_alb_dir.subset({{ {band, band}, {1, n_col}}}),
+                    sfc_alb_dif.subset({{ {band, band}, {1, n_col}}}),
+                    Array_gpu<TF,1>(), // Add an empty array, no inc_flux.
+                    (*fluxes).get_flux_up(),
+                    (*fluxes).get_flux_dn(),
+                    (*fluxes).get_flux_dn_dir());
+            
+            (*fluxes).net_flux();
 
-        std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
-                std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
-        
-        rte_sw.rte_sw(
-                optical_props,
-                top_at_1,
-                mu0,
-                toa_src,
-                sfc_alb_dir.subset({{ {band, band}, {1, n_col}}}),
-                sfc_alb_dif.subset({{ {band, band}, {1, n_col}}}),
-                Array_gpu<TF,1>(), // Add an empty array, no inc_flux.
-                (*fluxes).get_flux_up(),
-                (*fluxes).get_flux_dn(),
-                (*fluxes).get_flux_dn_dir());
-        
-        (*fluxes).net_flux();
-
-        gpoint_kernel_launcher_cuda::add_from_gpoint(
-                n_col, n_lev, sw_flux_up, sw_flux_dn, sw_flux_dn_dir, sw_flux_net,
-                (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
-
-        if (switch_output_bnd_fluxes)
-        {
-            gpoint_kernel_launcher_cuda::get_from_gpoint(
-                    n_col, n_lev, igpt-1, sw_bnd_flux_up, sw_bnd_flux_dn, sw_bnd_flux_dn_dir, sw_bnd_flux_net,
+            gpoint_kernel_launcher_cuda::add_from_gpoint(
+                    n_col, n_lev, sw_flux_up, sw_flux_dn, sw_flux_dn_dir, sw_flux_net,
                     (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
+
+            if (switch_output_bnd_fluxes)
+            {
+                gpoint_kernel_launcher_cuda::get_from_gpoint(
+                        n_col, n_lev, igpt-1, sw_bnd_flux_up, sw_bnd_flux_dn, sw_bnd_flux_dn_dir, sw_bnd_flux_net,
+                        (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
+            }
         }
     }    
 }
