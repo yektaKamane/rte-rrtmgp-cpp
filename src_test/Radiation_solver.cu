@@ -33,7 +33,7 @@
 #include "Fluxes.h"
 #include "Rte_lw.h"
 #include "Rte_sw.h"
-#include "subset_kernel_launcher_cuda.h"
+#include "rrtmgp_kernel_launcher_cuda.h"
 #include "gpoint_kernel_launcher_cuda.h"
 
 
@@ -411,6 +411,13 @@ void Radiation_solver_longwave<TF>::solve_gpu(
         Gas_optics_rrtmgp_gpu<TF>::get_col_dry(col_dry, gas_concs.get_vmr("h2o"), p_lev);
     }
 
+    if (switch_fluxes)
+    {
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, lw_flux_up);
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, lw_flux_dn);
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, lw_flux_net);
+    }
+    
     const Array<int, 2>& band_limits_gpt(this->kdist_gpu->get_band_lims_gpoint());
     for (int igpt=1; igpt<=n_gpt; ++igpt)
     {
@@ -559,6 +566,14 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
     Array<int,2> cld_mask_liq({n_col, n_lay});
     Array<int,2> cld_mask_ice({n_col, n_lay});
     
+    if (switch_fluxes)
+    {
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_up);
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_dn);
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_dn_dir);
+        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_net);
+    }
+
     const Array<int, 2>& band_limits_gpt(this->kdist_gpu->get_band_lims_gpoint());
     for (int igpt=1; igpt<=n_gpt; ++igpt)
     {
@@ -572,7 +587,6 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             }
         }
         
-        printf("%d \n",igpt);
         kdist_gpu->gas_optics(
                   igpt-1,
                   p_lay,
@@ -582,7 +596,6 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                   optical_props,
                   toa_src,
                   col_dry);
-        printf("%d \n",igpt);
         scaling_to_subset(n_col, n_gpt, toa_src, tsi_scaling);
         
         if (switch_cloud_optics)

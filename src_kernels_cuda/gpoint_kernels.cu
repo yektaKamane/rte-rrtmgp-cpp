@@ -21,12 +21,11 @@ void add_from_gpoint_kernel(const int ncol, const int nlay,
 
     if ( (icol < ncol) && (ilay < nlay) )
     {
-        const int idx_full = icol + ilay*ncol;
-        const int idx_sub = icol + ilay*ncol;
-        var1_full[idx_full] += var1_sub[idx_sub];
-        var2_full[idx_full] += var2_sub[idx_sub];
-        var3_full[idx_full] += var3_sub[idx_sub];
-        var4_full[idx_full] += var4_sub[idx_sub];
+        const int idx = icol + ilay*ncol;
+        var1_full[idx] += var1_sub[idx];
+        var2_full[idx] += var2_sub[idx];
+        var3_full[idx] += var3_sub[idx];
+        var4_full[idx] += var4_sub[idx];
     }
 }
 
@@ -40,11 +39,10 @@ void add_from_gpoint_kernel(const int ncol, const int nlay,
 
     if ( (icol < ncol) && (ilay < nlay) )
     {
-        const int idx_full = icol+ ilay*ncol;
-        const int idx_sub = icol + ilay*ncol;
-        var1_full[idx_full] += var1_sub[idx_sub];
-        var2_full[idx_full] += var2_sub[idx_sub];
-        var3_full[idx_full] += var3_sub[idx_sub];
+        const int idx = icol + ilay*ncol;
+        var1_full[idx] += var1_sub[idx];
+        var2_full[idx] += var2_sub[idx];
+        var3_full[idx] += var3_sub[idx];
     }
 }
 

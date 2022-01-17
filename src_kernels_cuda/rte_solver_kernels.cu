@@ -60,9 +60,9 @@ void lw_transport_noscat_kernel(
         #pragma unroll loop_unroll_factor_nlay
         for (int ilev=1; ilev<(nlay+1); ++ilev)
         {
-            const int idx1 = icol;
-            const int idx2 = icol;
-            const int idx3 = icol;
+            const int idx1 = icol + ilev*ncol;
+            const int idx2 = icol + (ilev-1)*ncol;
+            const int idx3 = icol + (ilev-1)*ncol;
             radn_up[idx1] = trans[idx3] * radn_up[idx2] + source_up[idx3];
             radn_up_jac[idx1] = trans[idx3] * radn_up_jac[idx2];;
         }
@@ -325,9 +325,7 @@ void apply_BC_kernel(const int ncol, const int nlay, const int ngpt, const BOOL_
     if ( (icol < ncol) ) 
     {
         const int idx_out = icol + ((top_at_1 ? 0 : (nlay * ncol)));
-        const int idx_in = icol;
-
-        flux_dn[idx_out] = inc_flux[idx_in] * factor[icol];
+        flux_dn[idx_out] = inc_flux[icol] * factor[icol];
     }
 }
 

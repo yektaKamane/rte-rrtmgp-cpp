@@ -47,8 +47,7 @@ namespace
 
         if ( ( icol < ncol)  )
         {
-            const int idx = icol + igpt*ncol;
-            src_out[idx] = src_in[igpt];
+            src_out[icol] = src_in[igpt];
         }
     }
 
@@ -1052,7 +1051,7 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
     const int neta = this->get_neta();
     const int npres = this->get_npres();
     const int ntemp = this->get_ntemp();
-
+    
     const int nminorlower = this->minor_scales_with_density_lower.dim(1);
     const int nminorklower = this->kminor_lower.dim(3);
     const int nminorupper = this->minor_scales_with_density_upper.dim(1);
@@ -1075,8 +1074,8 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
             fill_gases_kernel<<<grid_gpu, block_gpu>>>(
                 ncol, nlay, vmr_2d.dim(1), vmr_2d.dim(2), ngas, igas, vmr.ptr(), vmr_2d.ptr(), col_gas.ptr(), col_dry.ptr());
         }
-
-
+ 
+ 
         rrtmgp_kernel_launcher_cuda::interpolation(
                 ncol, nlay,
                 ngas, nflav, neta, npres, ntemp,
@@ -1132,16 +1131,14 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 scalings_upper,
                 compute_gas_taus_map);
     }
-    printf("-> %d %d %d %d\n",kmajor_gpu.size(),jeta.size(),col_mix.size(),fmajor.size());
+    
     bool has_rayleigh = (this->krayl.size() > 0);
 
     if (has_rayleigh)
     {
         Array_gpu<TF,2> tau({ncol, nlay});
         Array_gpu<TF,2> tau_rayleigh({ncol, nlay});
-        //rrtmgp_kernel_launcher_cuda::zero_array(ngpt, nlay, ncol, tau);
-
-        rrtmgp_kernel_launcher_cuda::zero_array(ncol, nlay, tau);
+        rrtmgp_kernel_launcher_cuda::zero_array(nlay, ncol, tau);
         rrtmgp_kernel_launcher_cuda::zero_array(ncol, nlay, tau_rayleigh);
 
         rrtmgp_kernel_launcher_cuda::compute_tau_absorption(
@@ -1297,6 +1294,7 @@ void Gas_optics_rrtmgp_gpu<TF>::set_solar_variability(
                 + (sb_index - b_offset) * this->solar_source_sunspot({igpt});
     }
     this->solar_source_gpu = this->solar_source;
+    this->solar_source_gpu.dump("solarsource");
 }
 
 

@@ -340,14 +340,8 @@ void gas_optical_depths_major_kernel(
         const TF* __restrict__ ifmajor = &fmajor[idx_fcl3];
 
         const int idx_out = icol + ilay*ncol;
-        if (threadIdx.x==0 && blockIdx.x ==0 && blockIdx.y ==0 && threadIdx.y ==0)
-        {
-        for (int i=0; i<2; ++i) 
-        {    printf("X %d %d %d %d %d %d\n",idx_fcl1,idx_fcl3,(ljtemp-1+i) + (jeta[idx_fcl1+i]-1)*ntemp + (jpressi-1)*ntemp*neta + igpt*ntemp*neta*npress,
-            (ljtemp-1+i) +  jeta[idx_fcl1+i]   *ntemp + (jpressi-1)*ntemp*neta + igpt*ntemp*neta*npress,
-            (ljtemp-1+i) + (jeta[idx_fcl1+i]-1)*ntemp + jpressi    *ntemp*neta + igpt*ntemp*neta*npress,
-            (ljtemp-1+i) +  jeta[idx_fcl1+i]   *ntemp + jpressi    *ntemp*neta + igpt*ntemp*neta*npress);
-        }}// un-unrolling this loops saves registers and improves parallelism/utilization.
+
+        // un-unrolling this loops saves registers and improves parallelism/utilization.
         #pragma unroll 1
         for (int i=0; i<2; ++i)
         {

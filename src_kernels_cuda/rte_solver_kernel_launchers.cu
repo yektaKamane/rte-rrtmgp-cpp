@@ -281,7 +281,7 @@ namespace rte_kernel_launcher_cuda
         }
 
 
-        // Step 2.
+      // Step 2.
         dim3 grid_adding, block_adding;
 
         if (tunings.count("sw_adding") == 0)
