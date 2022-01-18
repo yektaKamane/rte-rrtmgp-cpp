@@ -31,25 +31,13 @@
 namespace optical_props_kernel_launcher_cuda
 {
     template<typename TF> void increment_1scalar_by_1scalar(
-            int ncol, int nlay, int ngpt,
+            int ncol, int nlay,
             Array_gpu<TF,2>& tau_inout, const Array_gpu<TF,2>& tau_in);
 
     template<typename TF> void increment_2stream_by_2stream(
-            int ncol, int nlay, int ngpt,
+            int ncol, int nlay,
             Array_gpu<TF,2>& tau_inout, Array_gpu<TF,2>& ssa_inout, Array_gpu<TF,2>& g_inout,
             const Array_gpu<TF,2>& tau_in, const Array_gpu<TF,2>& ssa_in, const Array_gpu<TF,2>& g_in);
-
-    template<typename TF> void inc_1scalar_by_1scalar_bybnd(
-            int ncol, int nlay, int ngpt,
-            Array_gpu<TF,2>& tau_inout, const Array_gpu<TF,2>& tau_in,
-            int nbnd, const Array_gpu<int,2>& band_lims_gpoint);
-
-    template<typename TF> void inc_2stream_by_2stream_bybnd(
-            int ncol, int nlay, int ngpt,
-            Array_gpu<TF,2>& tau_inout, Array_gpu<TF,2>& ssa_inout, Array_gpu<TF,2>& g_inout,
-            const Array_gpu<TF,2>& tau_in, const Array_gpu<TF,2>& ssa_in, const Array_gpu<TF,2>& g_in,
-            int nbnd, const Array_gpu<int,2>& band_lims_gpoint,
-            Tuner_map& tunings);
 
     template<typename TF> void delta_scale_2str_k(
             int ncol, int nlay, int ngpt,

@@ -446,6 +446,7 @@ void Radiation_solver_longwave<TF>::solve_gpu(
         if (switch_cloud_optics)
         {
             cloud_optics_gpu->cloud_optics(
+                    band-1,
                     lwp,
                     iwp,
                     rel,
@@ -601,19 +602,20 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         if (switch_cloud_optics)
         {
             cloud_optics_gpu->cloud_optics(
+                    band-1,
                     lwp,
                     iwp,
                     rel,
                     rei,
                     *cloud_optical_props);
 
+ 
             cloud_optical_props->delta_scale();
-
+        
             // Add the cloud optical props to the gas optical properties.
             add_to(
                     dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
                     dynamic_cast<Optical_props_2str_gpu<TF>&>(*cloud_optical_props));
-
         }
         
         // Store the optical properties, if desired

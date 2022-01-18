@@ -126,24 +126,10 @@ void add_to(Optical_props_1scl_gpu<TF>& op_inout, const Optical_props_1scl_gpu<T
 {
     const int ncol = op_inout.get_ncol();
     const int nlay = op_inout.get_nlay();
-    const int ngpt = op_inout.get_ngpt();
 
-    if (ngpt == op_in.get_ngpt())
-    {
-        optical_props_kernel_launcher_cuda::increment_1scalar_by_1scalar(
-                ncol, nlay, ngpt,
-                op_inout.get_tau(), op_in.get_tau());
-    }
-    else
-    {
-        if (op_in.get_ngpt() != op_inout.get_nband())
-            throw std::runtime_error("Cannot add optical properties with incompatible band - gpoint combination");
-
-        optical_props_kernel_launcher_cuda::inc_1scalar_by_1scalar_bybnd(
-                ncol, nlay, ngpt,
-                op_inout.get_tau(), op_in.get_tau(),
-                op_inout.get_nband(), op_inout.get_band_lims_gpoint());
-    }
+    optical_props_kernel_launcher_cuda::increment_1scalar_by_1scalar(
+            ncol, nlay,
+            op_inout.get_tau(), op_in.get_tau());
 }
 
 
@@ -152,27 +138,10 @@ void add_to(Optical_props_2str_gpu<TF>& op_inout, const Optical_props_2str_gpu<T
 {
     const int ncol = op_inout.get_ncol();
     const int nlay = op_inout.get_nlay();
-    const int ngpt = op_inout.get_ngpt();
-
-    if (ngpt == op_in.get_ngpt())
-    {
-        optical_props_kernel_launcher_cuda::increment_2stream_by_2stream(
-                ncol, nlay, ngpt,
-                op_inout.get_tau(), op_inout.get_ssa(), op_inout.get_g(),
-                op_in   .get_tau(), op_in   .get_ssa(), op_in   .get_g());
-    }
-    else
-    {
-        if (op_in.get_ngpt() != op_inout.get_nband())
-            throw std::runtime_error("Cannot add optical properties with incompatible band - gpoint combination");
-
-        optical_props_kernel_launcher_cuda::inc_2stream_by_2stream_bybnd(
-                ncol, nlay, ngpt,
-                op_inout.get_tau(), op_inout.get_ssa(), op_inout.get_g(),
-                op_in   .get_tau(), op_in   .get_ssa(), op_in   .get_g(),
-                op_inout.get_nband(), op_inout.get_band_lims_gpoint(),
-                op_inout.add_to_map);
-    }
+    optical_props_kernel_launcher_cuda::increment_2stream_by_2stream(
+            ncol, nlay,
+            op_inout.get_tau(), op_inout.get_ssa(), op_inout.get_g(),
+            op_in   .get_tau(), op_in   .get_ssa(), op_in   .get_g());    
 }
 
 
