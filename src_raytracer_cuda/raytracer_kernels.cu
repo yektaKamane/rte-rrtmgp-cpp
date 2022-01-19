@@ -1,27 +1,19 @@
-#include <fstream>
-#include <iostream>
-//#include <iomanip>
-//#include <chrono>
-#include <cmath>
-#include <vector>
-#include <algorithm>
-
 //#include <curand_kernel.h>
 #include <float.h>
 
-using Int = unsigned long long;
+// using Int = unsigned long long;
 const Int Atomic_reduce_const = (Int)(-1LL);
 
 //using Int = unsigned int;
 //const Int Atomic_reduce_const = (Int)(-1);
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
-using Float = float;
+// using Float = float;
 const Float Float_epsilon = FLT_EPSILON;
 constexpr int block_size = 512;
 constexpr int grid_size = 64;
 #else
-using Float = double;
+// using Float = double;
 const Float Float_epsilon = DBL_EPSILON;
 constexpr int block_size = 512;
 constexpr int grid_size = 64;
@@ -34,6 +26,7 @@ constexpr Float kgrid_h = Float(24000.)/ngrid_h;
 constexpr Float kgrid_v = Float(8520.)/ngrid_v;
 constexpr Float w_thres = 0.5;
 
+
 struct Vector
 {
     Float x;
@@ -41,6 +34,7 @@ struct Vector
     Float z;
 
 };
+
 
 static inline __device__
 Vector operator*(const Vector v, const Float s) { return Vector{s*v.x, s*v.y, s*v.z}; }
@@ -52,18 +46,18 @@ static inline __device__
 Vector operator+(const Vector v1, const Vector v2) { return Vector{v1.x+v2.x, v1.y+v2.y, v1.z+v2.z}; }
 
 
-struct Optics_ext
-{
-    Float gas;
-    Float cloud;
-};
-
-struct Optics_scat
-{
-    Float ssa;
-    Float asy;
-};
-
+// struct Optics_ext
+// {
+//     Float gas;
+//     Float cloud;
+// };
+// 
+// 
+// struct Optics_scat
+// {
+//     Float ssa;
+//     Float asy;
+// };
 
 
 __device__
@@ -271,6 +265,7 @@ inline void write_photon_out(Float* field_out, const Float w)
 {
     atomicAdd(field_out, w);
 }
+
 
 __global__
 void ray_tracer_kernel(

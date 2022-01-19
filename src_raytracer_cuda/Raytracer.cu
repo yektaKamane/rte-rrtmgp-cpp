@@ -1,10 +1,6 @@
 #include "Raytracer.h"
 #include "Array.h"
-
-namespace
-{
-    #include "raytracer_kernels.cu"
-}
+#include "raytracer_kernel.h"
 
 namespace
 {

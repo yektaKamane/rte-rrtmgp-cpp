@@ -1,5 +1,5 @@
-#ifndef RAYTRACING_H
-#define RAYTRACING_H
+#ifndef RAYTRACER_H
+#define RAYTRACER_H
 
 #include <memory>
 #include "Types.h"
