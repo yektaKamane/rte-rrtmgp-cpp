@@ -1,269 +1,274 @@
-//#include <curand_kernel.h>
 #include <float.h>
-
-// using Int = unsigned long long;
-const Int Atomic_reduce_const = (Int)(-1LL);
-
-//using Int = unsigned int;
-//const Int Atomic_reduce_const = (Int)(-1);
-
-#ifdef RTE_RRTMGP_SINGLE_PRECISION
-// using Float = float;
-const Float Float_epsilon = FLT_EPSILON;
-constexpr int block_size = 512;
-constexpr int grid_size = 64;
-#else
-// using Float = double;
-const Float Float_epsilon = DBL_EPSILON;
-constexpr int block_size = 512;
-constexpr int grid_size = 64;
-#endif
-
-constexpr int ngrid_h = 90;
-constexpr int ngrid_v = 71;
-constexpr Float k_null_gas_min = Float(1.e-3);
-constexpr Float kgrid_h = Float(24000.)/ngrid_h;
-constexpr Float kgrid_v = Float(8520.)/ngrid_v;
-constexpr Float w_thres = 0.5;
+#include <curand_kernel.h>
+#include "raytracer_kernels.h"
 
 
-struct Vector
+namespace
 {
-    Float x;
-    Float y;
-    Float z;
-
-};
-
-
-static inline __device__
-Vector operator*(const Vector v, const Float s) { return Vector{s*v.x, s*v.y, s*v.z}; }
-static inline __device__
-Vector operator*(const Float s, const Vector v) { return Vector{s*v.x, s*v.y, s*v.z}; }
-static inline __device__
-Vector operator-(const Vector v1, const Vector v2) { return Vector{v1.x-v2.x, v1.y-v2.y, v1.z-v2.z}; }
-static inline __device__
-Vector operator+(const Vector v1, const Vector v2) { return Vector{v1.x+v2.x, v1.y+v2.y, v1.z+v2.z}; }
-
-
-// struct Optics_ext
-// {
-//     Float gas;
-//     Float cloud;
-// };
-// 
-// 
-// struct Optics_scat
-// {
-//     Float ssa;
-//     Float asy;
-// };
-
-
-__device__
-Vector cross(const Vector v1, const Vector v2)
-{
-    return Vector{
-            v1.y*v2.z - v1.z*v2.y,
-            v1.z*v2.x - v1.x*v2.z,
-            v1.x*v2.y - v1.y*v2.x};
-}
-
-
-__device__
-Float dot(const Vector v1, const Vector v2)
-{
-    return v1.x*v2.x + v1.y*v2.y + v1.z*v1.z;
-}
-
-__device__
-Float norm(const Vector v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
-
-
-__device__
-Vector normalize(const Vector v)
-{
-    const Float length = norm(v);
-    return Vector{ v.x/length, v.y/length, v.z/length};
-}
-
-enum class Photon_kind { Direct, Diffuse };
-
-struct Photon
-{
-    Vector position;
-    Vector direction;
-    Photon_kind kind;
-};
-
-
-__device__
-Float pow2(const Float d) { return d*d; }
-
-inline void gpu_assert(cudaError_t code, const char *file, int line, bool abort=true)
-{
-    if (code != cudaSuccess)
-    {
-        fprintf(stderr,"CUDA_SAFE_CALL: %s %s %d\n", cudaGetErrorString(code), file, line);
-        if (abort) exit(code);
-    }
-}
-
-
-//template<typename T>
-//T* allocate_gpu(const int length)
-//{
-//    TF* data_ptr = Tools_gpu::allocate_gpu<T>(ncells);
-//    //cuda_safe_call(cudaMemcpy(data_ptr, array.ptr(), ncells*sizeof(T), cudaMemcpyDeviceToDevice));
-//    //
-//    //T* data_ptr = nullptr;
-//    //cuda_safe_call(cudaMalloc((void **) &data_ptr, length*sizeof(T)));
-//
-//    return data_ptr;
-//}
-//
-//
-//template<typename T>
-//void free_gpu(T*& data_ptr)
-//{
-//    cuda_safe_call(cudaFree(data_ptr));
-//    data_ptr = nullptr;
-//}
-//
-//
-//template<typename T>
-//void copy_to_gpu(T* gpu_data, const T* cpu_data, const int length)
-//{
-//    cuda_safe_call(cudaMemcpy(gpu_data, cpu_data, length*sizeof(T), cudaMemcpyHostToDevice));
-//}
-//
-//
-//template<typename T>
-//void copy_from_gpu(T* cpu_data, const T* gpu_data, const int length)
-//{
-//    cuda_safe_call(cudaMemcpy(cpu_data, gpu_data, length*sizeof(T), cudaMemcpyDeviceToHost));
-//}
-
-
-__device__
-Float rayleigh(const Float random_number)
-{
-    const Float q = Float(4.)*random_number - Float(2.);
-    const Float d = Float(1.) + pow2(q);
-    const Float u = pow(-q + sqrt(d), Float(1./3.));
-    return u - Float(1.)/u;
-}
-
-
-__device__
-Float henyey(const Float g, const Float random_number)
-{
-    const Float a = pow2(Float(1.) - pow2(g));
-    const Float b = Float(2.)*g*pow2(Float(2.)*random_number*g + Float(1.) - g);
-    const Float c = -g/Float(2.) - Float(1.)/(Float(2.)*g);
-    return Float(-1.)*(a/b) - c;
-}
-
-
-__device__
-Float sample_tau(const Float random_number)
-{
-    // Prevent log(0) possibility.
-    return Float(-1.)*log(-random_number + Float(1.) + Float_epsilon);
-}
-
-
-__device__
-inline int float_to_int(const Float s_size, const Float ds, const int ntot_max)
-{
-    const int ntot = static_cast<int>(s_size / ds);
-    return ntot < ntot_max ? ntot : ntot_max-1;
-}
-
-__device__
-inline void reset_photon(
-        Photon& photon, Int& photons_shot, Float* __restrict__ const toa_down_count,
-        const unsigned int random_number_x, const unsigned int random_number_y,
-        const Float x_size, const Float y_size, const Float z_size,
-        const Float dx_grid, const Float dy_grid, const Float dz_grid,
-        const Float dir_x, const Float dir_y, const Float dir_z,
-        const bool generation_completed, Float& weight,
-        const int itot, const int jtot)
-{
-    ++photons_shot;
-    if (!generation_completed)
-    {
-        const int i = random_number_x / static_cast<unsigned int>((1ULL << 32) / itot);
-        const int j = random_number_y / static_cast<unsigned int>((1ULL << 32) / jtot);
-
-        photon.position.x = x_size * random_number_x / (1ULL << 32);
-        photon.position.y = y_size * random_number_y / (1ULL << 32);
-        photon.position.z = z_size;
-
-        photon.direction.x = dir_x;
-        photon.direction.y = dir_y;
-        photon.direction.z = dir_z;
-
-        photon.kind = Photon_kind::Direct;
-        
-        const int ij = i + j*itot;
-        atomicAdd(&toa_down_count[ij], Float(1.));
+    // using Int = unsigned long long;
+    const Int Atomic_reduce_const = (Int)(-1LL);
     
-        weight = 1;
-
-    }
-}
-
-
-template<typename T>
-struct Random_number_generator
-{
-    __device__ Random_number_generator(unsigned int tid)
+    //using Int = unsigned int;
+    //const Int Atomic_reduce_const = (Int)(-1);
+    
+    #ifdef RTE_RRTMGP_SINGLE_PRECISION
+    // using Float = float;
+    const Float Float_epsilon = FLT_EPSILON;
+    constexpr int block_size = 512;
+    constexpr int grid_size = 64;
+    #else
+    // using Float = double;
+    const Float Float_epsilon = DBL_EPSILON;
+    constexpr int block_size = 512;
+    constexpr int grid_size = 64;
+    #endif
+    
+    constexpr int ngrid_h = 90;
+    constexpr int ngrid_v = 71;
+    constexpr Float k_null_gas_min = Float(1.e-3);
+    constexpr Float kgrid_h = Float(24000.)/ngrid_h;
+    constexpr Float kgrid_v = Float(8520.)/ngrid_v;
+    constexpr Float w_thres = 0.5;
+    
+    
+    struct Vector
     {
-        curand_init(tid, tid, 0, &state);
-    }
-
-    __device__ T operator()();
-
-    curandState state;
-};
-
-
-template<>
-__device__ double Random_number_generator<double>::operator()()
-{
-    return 1. - curand_uniform_double(&state);
-}
-
-
-template<>
-__device__ float Random_number_generator<float>::operator()()
-{
-    return 1.f - curand_uniform(&state);
-}
-
-
-struct Quasi_random_number_generator_2d
-{
-    __device__ Quasi_random_number_generator_2d(
-            curandDirectionVectors32_t* vectors, unsigned int* constants, unsigned int offset)
+        Float x;
+        Float y;
+        Float z;
+    
+    };
+    
+    
+    static inline __device__
+    Vector operator*(const Vector v, const Float s) { return Vector{s*v.x, s*v.y, s*v.z}; }
+    static inline __device__
+    Vector operator*(const Float s, const Vector v) { return Vector{s*v.x, s*v.y, s*v.z}; }
+    static inline __device__
+    Vector operator-(const Vector v1, const Vector v2) { return Vector{v1.x-v2.x, v1.y-v2.y, v1.z-v2.z}; }
+    static inline __device__
+    Vector operator+(const Vector v1, const Vector v2) { return Vector{v1.x+v2.x, v1.y+v2.y, v1.z+v2.z}; }
+    
+    
+    // struct Optics_ext
+    // {
+    //     Float gas;
+    //     Float cloud;
+    // };
+    // 
+    // 
+    // struct Optics_scat
+    // {
+    //     Float ssa;
+    //     Float asy;
+    // };
+    
+    
+    __device__
+    Vector cross(const Vector v1, const Vector v2)
     {
-        curand_init(vectors[0], constants[0], offset, &state_x);
-        curand_init(vectors[1], constants[1], offset, &state_y);
+        return Vector{
+                v1.y*v2.z - v1.z*v2.y,
+                v1.z*v2.x - v1.x*v2.z,
+                v1.x*v2.y - v1.y*v2.x};
     }
-
-    __device__ unsigned int x() { return curand(&state_x); }
-    __device__ unsigned int y() { return curand(&state_y); }
-
-    curandStateScrambledSobol32_t state_x;
-    curandStateScrambledSobol32_t state_y;
-};
-
-
-__device__
-inline void write_photon_out(Float* field_out, const Float w)
-{
-    atomicAdd(field_out, w);
+    
+    
+    __device__
+    Float dot(const Vector v1, const Vector v2)
+    {
+        return v1.x*v2.x + v1.y*v2.y + v1.z*v1.z;
+    }
+    
+    __device__
+    Float norm(const Vector v) { return sqrt(v.x*v.x + v.y*v.y + v.z*v.z); }
+    
+    
+    __device__
+    Vector normalize(const Vector v)
+    {
+        const Float length = norm(v);
+        return Vector{ v.x/length, v.y/length, v.z/length};
+    }
+    
+    enum class Photon_kind { Direct, Diffuse };
+    
+    struct Photon
+    {
+        Vector position;
+        Vector direction;
+        Photon_kind kind;
+    };
+    
+    
+    __device__
+    Float pow2(const Float d) { return d*d; }
+    
+    // inline void gpu_assert(cudaError_t code, const char *file, int line, bool abort=true)
+    // {
+    //     if (code != cudaSuccess)
+    //     {
+    //         fprintf(stderr,"CUDA_SAFE_CALL: %s %s %d\n", cudaGetErrorString(code), file, line);
+    //         if (abort) exit(code);
+    //     }
+    // }
+    
+    
+    //template<typename T>
+    //T* allocate_gpu(const int length)
+    //{
+    //    TF* data_ptr = Tools_gpu::allocate_gpu<T>(ncells);
+    //    //cuda_safe_call(cudaMemcpy(data_ptr, array.ptr(), ncells*sizeof(T), cudaMemcpyDeviceToDevice));
+    //    //
+    //    //T* data_ptr = nullptr;
+    //    //cuda_safe_call(cudaMalloc((void **) &data_ptr, length*sizeof(T)));
+    //
+    //    return data_ptr;
+    //}
+    //
+    //
+    //template<typename T>
+    //void free_gpu(T*& data_ptr)
+    //{
+    //    cuda_safe_call(cudaFree(data_ptr));
+    //    data_ptr = nullptr;
+    //}
+    //
+    //
+    //template<typename T>
+    //void copy_to_gpu(T* gpu_data, const T* cpu_data, const int length)
+    //{
+    //    cuda_safe_call(cudaMemcpy(gpu_data, cpu_data, length*sizeof(T), cudaMemcpyHostToDevice));
+    //}
+    //
+    //
+    //template<typename T>
+    //void copy_from_gpu(T* cpu_data, const T* gpu_data, const int length)
+    //{
+    //    cuda_safe_call(cudaMemcpy(cpu_data, gpu_data, length*sizeof(T), cudaMemcpyDeviceToHost));
+    //}
+    
+    
+    __device__
+    Float rayleigh(const Float random_number)
+    {
+        const Float q = Float(4.)*random_number - Float(2.);
+        const Float d = Float(1.) + pow2(q);
+        const Float u = pow(-q + sqrt(d), Float(1./3.));
+        return u - Float(1.)/u;
+    }
+    
+    
+    __device__
+    Float henyey(const Float g, const Float random_number)
+    {
+        const Float a = pow2(Float(1.) - pow2(g));
+        const Float b = Float(2.)*g*pow2(Float(2.)*random_number*g + Float(1.) - g);
+        const Float c = -g/Float(2.) - Float(1.)/(Float(2.)*g);
+        return Float(-1.)*(a/b) - c;
+    }
+    
+    
+    __device__
+    Float sample_tau(const Float random_number)
+    {
+        // Prevent log(0) possibility.
+        return Float(-1.)*log(-random_number + Float(1.) + Float_epsilon);
+    }
+    
+    
+    __device__
+    inline int float_to_int(const Float s_size, const Float ds, const int ntot_max)
+    {
+        const int ntot = static_cast<int>(s_size / ds);
+        return ntot < ntot_max ? ntot : ntot_max-1;
+    }
+    
+    __device__
+    inline void reset_photon(
+            Photon& photon, Int& photons_shot, Float* __restrict__ const toa_down_count,
+            const unsigned int random_number_x, const unsigned int random_number_y,
+            const Float x_size, const Float y_size, const Float z_size,
+            const Float dx_grid, const Float dy_grid, const Float dz_grid,
+            const Float dir_x, const Float dir_y, const Float dir_z,
+            const bool generation_completed, Float& weight,
+            const int itot, const int jtot)
+    {
+        ++photons_shot;
+        if (!generation_completed)
+        {
+            const int i = random_number_x / static_cast<unsigned int>((1ULL << 32) / itot);
+            const int j = random_number_y / static_cast<unsigned int>((1ULL << 32) / jtot);
+    
+            photon.position.x = x_size * random_number_x / (1ULL << 32);
+            photon.position.y = y_size * random_number_y / (1ULL << 32);
+            photon.position.z = z_size;
+    
+            photon.direction.x = dir_x;
+            photon.direction.y = dir_y;
+            photon.direction.z = dir_z;
+    
+            photon.kind = Photon_kind::Direct;
+            
+            const int ij = i + j*itot;
+            atomicAdd(&toa_down_count[ij], Float(1.));
+        
+            weight = 1;
+    
+        }
+    }
+    
+    
+    template<typename T>
+    struct Random_number_generator
+    {
+        __device__ Random_number_generator(unsigned int tid)
+        {
+            curand_init(tid, tid, 0, &state);
+        }
+    
+        __device__ T operator()();
+    
+        curandState state;
+    };
+    
+    
+    template<>
+    __device__ double Random_number_generator<double>::operator()()
+    {
+        return 1. - curand_uniform_double(&state);
+    }
+    
+    
+    template<>
+    __device__ float Random_number_generator<float>::operator()()
+    {
+        return 1.f - curand_uniform(&state);
+    }
+    
+    
+    struct Quasi_random_number_generator_2d
+    {
+        __device__ Quasi_random_number_generator_2d(
+                curandDirectionVectors32_t* vectors, unsigned int* constants, unsigned int offset)
+        {
+            curand_init(vectors[0], constants[0], offset, &state_x);
+            curand_init(vectors[1], constants[1], offset, &state_y);
+        }
+    
+        __device__ unsigned int x() { return curand(&state_x); }
+        __device__ unsigned int y() { return curand(&state_y); }
+    
+        curandStateScrambledSobol32_t state_x;
+        curandStateScrambledSobol32_t state_y;
+    };
+    
+    
+    __device__
+    inline void write_photon_out(Float* field_out, const Float w)
+    {
+        atomicAdd(field_out, w);
+    }
 }
 
 

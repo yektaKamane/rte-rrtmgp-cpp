@@ -1,6 +1,6 @@
 #include "Raytracer.h"
 #include "Array.h"
-#include "raytracer_kernel.h"
+#include "raytracer_kernels.h"
 
 namespace
 {

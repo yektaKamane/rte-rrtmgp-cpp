@@ -1,4 +1,5 @@
 FILE(GLOB sourcefiles
+    "../src_raytracer_cuda/raytracer_kernels.cu"
     "../src_raytracer_cuda/Raytracer.cu")
 
 include_directories("../include" SYSTEM ${INCLUDE_DIRS})
