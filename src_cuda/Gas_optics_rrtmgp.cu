@@ -45,7 +45,7 @@ namespace
     {
         const int icol = blockIdx.x*blockDim.x + threadIdx.x;
 
-        if ( ( icol < ncol)  )
+        if (icol < ncol)
         {
             src_out[icol] = src_in[igpt];
         }
@@ -1075,7 +1075,6 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 ncol, nlay, vmr_2d.dim(1), vmr_2d.dim(2), ngas, igas, vmr.ptr(), vmr_2d.ptr(), col_gas.ptr(), col_dry.ptr());
         }
  
- 
         rrtmgp_kernel_launcher_cuda::interpolation(
                 ncol, nlay,
                 ngas, nflav, neta, npres, ntemp,
@@ -1098,7 +1097,7 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
                 compute_gas_taus_map);
 
         this->idx_h2o=-1;
-        for  (int i=1; i<=this->gas_names.dim(1); ++i)
+        for (int i=1; i<=this->gas_names.dim(1); ++i)
             if (gas_names({i}) == "h2o")
             {
                 this->idx_h2o = i;

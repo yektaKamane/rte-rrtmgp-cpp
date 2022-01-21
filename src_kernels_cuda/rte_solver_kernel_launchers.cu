@@ -26,7 +26,6 @@ namespace rte_kernel_launcher_cuda
         dim3 grid_gpu(grid_col);
         dim3 block_gpu(block_col);
         apply_BC_kernel<<<grid_gpu, block_gpu>>>(ncol, nlay, ngpt, top_at_1, inc_flux_dir.ptr(), mu0.ptr(), gpt_flux_dir.ptr());
-
     }
 
 
@@ -243,7 +242,7 @@ namespace rte_kernel_launcher_cuda
             {
                 std::tie(grid_source, block_source) = tune_kernel(
                         "sw_source_2stream_kernel",
-                        {ncol, 1}, {32, 64, 96, 128, 256, 384, 512}, {1}, {1},
+                        {ncol, 1}, {32, 64, 96, 128, 256, 384, 512, 768, 1024}, {1}, {1},
                         sw_source_2stream_kernel<TF, 1>,
                         ncol, nlay, ngpt, tau.ptr(), ssa.ptr(), g.ptr(), mu0.ptr(), r_dif, t_dif,
                         sfc_alb_dir.ptr(), source_up, source_dn, source_sfc, flux_dir.ptr());
@@ -252,7 +251,7 @@ namespace rte_kernel_launcher_cuda
             {
                 std::tie(grid_source, block_source) = tune_kernel(
                         "sw_source_2stream_kernel",
-                        {ncol, 1}, {32, 64, 96, 128, 256, 384, 512}, {1}, {1},
+                        {ncol, 1}, {32, 64, 96, 128, 256, 384, 512, 768, 1024}, {1}, {1},
                         sw_source_2stream_kernel<TF, 0>,
                         ncol, nlay, ngpt, tau.ptr(), ssa.ptr(), g.ptr(), mu0.ptr(), r_dif, t_dif,
                         sfc_alb_dir.ptr(), source_up, source_dn, source_sfc, flux_dir.ptr());
@@ -281,7 +280,7 @@ namespace rte_kernel_launcher_cuda
         }
 
 
-      // Step 2.
+        // Step 2.
         dim3 grid_adding, block_adding;
 
         if (tunings.count("sw_adding") == 0)
@@ -290,7 +289,7 @@ namespace rte_kernel_launcher_cuda
             {
                 std::tie(grid_adding, block_adding) = tune_kernel(
                         "sw_adding",
-                        {ncol, 1}, {32, 64, 96, 128, 256, 384, 512}, {1}, {1},
+                        {ncol, 1}, {16, 32, 64, 96, 128, 256, 384, 512}, {1}, {1},
                         sw_adding_kernel<TF, 1>,
                         ncol, nlay, ngpt, top_at_1,
                         sfc_alb_dif.ptr(), r_dif, t_dif,
@@ -301,7 +300,7 @@ namespace rte_kernel_launcher_cuda
             {
                 std::tie(grid_adding, block_adding) = tune_kernel(
                         "sw_adding",
-                        {ncol, 1}, {32, 64, 96, 128, 256, 384, 512}, {1}, {1},
+                        {ncol, 1}, {16, 32, 64, 96, 128, 256, 384, 512}, {1}, {1},
                         sw_adding_kernel<TF, 0>,
                         ncol, nlay, ngpt, top_at_1,
                         sfc_alb_dif.ptr(), r_dif, t_dif,
