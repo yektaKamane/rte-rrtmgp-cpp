@@ -67,6 +67,24 @@ namespace rrtmgp_kernel_launcher_cuda
     }
 
     template<typename TF>
+    void zero_array(const int ni, const int nj, const int nk, const int nn, Array_gpu<TF,4>& arr)
+    {
+        const int block_i = 32;
+        const int block_j = 16;
+        const int block_k = 1;
+
+        const int grid_i = ni/block_i + (ni%block_i > 0);
+        const int grid_j = nj/block_j + (nj%block_j > 0);
+        const int grid_k = nk/block_k + (nk%block_k > 0);
+
+        dim3 grid_gpu(grid_i, grid_j, grid_k);
+        dim3 block_gpu(block_i, block_j, block_k);
+
+        zero_array_kernel<<<grid_gpu, block_gpu>>>(
+                ni, nj, nk, nn, arr.ptr());
+    }
+
+    template<typename TF>
     void zero_array(const int ni, const int nj, const int nk, Array_gpu<TF,3>& arr)
     {
         const int block_i = 32;
@@ -328,7 +346,7 @@ namespace rrtmgp_kernel_launcher_cuda
             std::tie(grid, block) = tune_kernel(
                 "compute_tau_rayleigh_kernel",
                 {ncol, nlay, 1},
-                {1, 2, 4, 16, 24, 32, 64, 128}, {1, 2, 4}, {1},
+                {24, 32, 64, 128}, {1, 2}, {1},
                 compute_tau_rayleigh_kernel<TF>,
                 ncol, nlay, nbnd, ngpt,
                 ngas, nflav, neta, npres, ntemp,
@@ -407,7 +425,7 @@ namespace rrtmgp_kernel_launcher_cuda
         {
             std::tie(grid_maj, block_maj) = tune_kernel(
                     "gas_optical_depths_major_kernel",
-                    {nlay, ncol, 1}, {1, 2, 4, 8, 16}, {8, 16, 24, 32, 48, 64, 96, 128, 256, 512}, {1},
+                    {nlay, ncol, 1}, {1, 2}, {32, 48, 64, 96, 128, 256, 512}, {1},
                     gas_optical_depths_major_kernel<TF>,
                     ncol, nlay, nband, ngpt,
                     nflav, neta, npres, ntemp,
@@ -448,7 +466,7 @@ namespace rrtmgp_kernel_launcher_cuda
             std::tie(grid_min_1, block_min_1) = tune_kernel(
                         "gas_optical_depths_minor_kernel_lower",
                         {nlay, ncol, 1},
-                        {1, 2, 4, 8}, {1, 2, 4, 8, 16, 32, 48, 64, 96, 128}, {1},
+                        {1, 2}, {32, 48, 64, 96, 128}, {1},
                         gas_optical_depths_minor_kernel<TF>,
                         ncol, nlay, ngpt, 1,
                         ngas, nflav, ntemp, neta,
@@ -508,7 +526,7 @@ namespace rrtmgp_kernel_launcher_cuda
             std::tie(grid_min_2, block_min_2) = tune_kernel(
                    "gas_optical_depths_minor_kernel_upper",
                    {nlay, ncol, 1},
-                   {1, 2, 4, 8}, {1, 2, 4, 8, 16, 32, 48, 64, 96, 128}, {1},
+                   {1, 2}, {32, 48, 64, 96, 128}, {1},
                    gas_optical_depths_minor_kernel<TF>,
                    ncol, nlay, ngpt, 1,
                    ngas, nflav, ntemp, neta,
@@ -638,6 +656,8 @@ namespace rrtmgp_kernel_launcher_cuda
 template void rrtmgp_kernel_launcher_cuda::reorder123x321<float>(const int, const int, const int, const Array_gpu<float,3>&, Array_gpu<float,3>&, Tuner_map&);
 template void rrtmgp_kernel_launcher_cuda::reorder12x21<float>(const int, const int, const Array_gpu<float,2>&, Array_gpu<float,2>&);
 
+template void rrtmgp_kernel_launcher_cuda::zero_array<float>(const int, const int, const int, const int, Array_gpu<float,4>&);
+
 template void rrtmgp_kernel_launcher_cuda::zero_array<float>(const int, const int, const int, Array_gpu<float,3>&);
 
 template void rrtmgp_kernel_launcher_cuda::zero_array<float>(const int, const int, Array_gpu<float,2>&);
@@ -689,6 +709,8 @@ template void rrtmgp_kernel_launcher_cuda::minor_scalings(const int ncol, const 
 template void rrtmgp_kernel_launcher_cuda::reorder123x321<double>(const int, const int, const int, const Array_gpu<double,3>&, Array_gpu<double,3>&, Tuner_map&);
 
 template void rrtmgp_kernel_launcher_cuda::reorder12x21<double>(const int, const int, const Array_gpu<double,2>&, Array_gpu<double,2>&);
+
+template void rrtmgp_kernel_launcher_cuda::zero_array<double>(const int, const int, const int, const int, Array_gpu<double,4>&);
 
 template void rrtmgp_kernel_launcher_cuda::zero_array<double>(const int, const int, const int, Array_gpu<double,3>&);
 

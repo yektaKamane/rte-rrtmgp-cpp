@@ -146,7 +146,7 @@ template<typename TF>
 class Fluxes_broadband_gpu : public Fluxes_gpu<TF>
 {
     public:
-        Fluxes_broadband_gpu(const int ncol, const int nlev);
+        Fluxes_broadband_gpu(const int ncol_x, const int ncol_y, const int nlev);
         virtual ~Fluxes_broadband_gpu() {};
 
         virtual void net_flux();
@@ -169,6 +169,14 @@ class Fluxes_broadband_gpu : public Fluxes_gpu<TF>
         Array_gpu<TF,2>& get_flux_dn_dir() { return flux_dn_dir; }
         Array_gpu<TF,2>& get_flux_net   () { return flux_net;    }
 
+        Array_gpu<TF,2>& get_flux_toa_up    () { return flux_toa_up; }
+        Array_gpu<TF,2>& get_flux_sfc_dir   () { return flux_sfc_dir;}
+        Array_gpu<TF,2>& get_flux_sfc_dif   () { return flux_sfc_dif;}
+        Array_gpu<TF,2>& get_flux_sfc_up    () { return flux_sfc_up; }
+        Array_gpu<TF,3>& get_flux_abs_dir   () { return flux_abs_dir;}
+        Array_gpu<TF,3>& get_flux_abs_dif   () { return flux_abs_dif;}
+        
+        
         virtual Array_gpu<TF,3>& get_bnd_flux_up    () { throw std::runtime_error("Band fluxes are not available"); }
         virtual Array_gpu<TF,3>& get_bnd_flux_dn    () { throw std::runtime_error("Band fluxes are not available"); }
         virtual Array_gpu<TF,3>& get_bnd_flux_dn_dir() { throw std::runtime_error("Band fluxes are not available"); }
@@ -179,13 +187,19 @@ class Fluxes_broadband_gpu : public Fluxes_gpu<TF>
         Array_gpu<TF,2> flux_dn;
         Array_gpu<TF,2> flux_dn_dir;
         Array_gpu<TF,2> flux_net;
+        Array_gpu<TF,2> flux_toa_up;
+        Array_gpu<TF,2> flux_sfc_dir;
+        Array_gpu<TF,2> flux_sfc_dif;
+        Array_gpu<TF,2> flux_sfc_up;
+        Array_gpu<TF,3> flux_abs_dir;
+        Array_gpu<TF,3> flux_abs_dif;
 };
 
 template<typename TF>
 class Fluxes_byband_gpu : public Fluxes_broadband_gpu<TF>
 {
     public:
-        Fluxes_byband_gpu(const int ncol, const int nlev, const int nbnd);
+        Fluxes_byband_gpu(const int ncol_x, const int ncol_y, const int nlev, const int nbnd);
         virtual ~Fluxes_byband_gpu() {};
 
         virtual void reduce(

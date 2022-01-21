@@ -110,6 +110,23 @@ void reorder123x321_kernel(
     }
 }
 
+template<typename TF> __global__
+void zero_array_kernel(
+        const int ni, const int nj, const int nk, const int nn,
+        TF* __restrict__ arr)
+{
+    const int ii = blockIdx.x*blockDim.x + threadIdx.x;
+    const int ij = blockIdx.y*blockDim.y + threadIdx.y;
+    const int ik = blockIdx.z*blockDim.z + threadIdx.z;
+
+    if ( (ii < ni) && (ij < nj) && (ik < nk) )
+    {
+        const int idx = nn * (ii + ij*ni + ik*nj*ni);
+        for (int i=0; i<nn; ++i)
+            arr[idx+i] = TF(0.);
+    }
+}
+
 
 template<typename TF> __global__
 void zero_array_kernel(

@@ -170,11 +170,17 @@ namespace
 //    }
 
 template<typename TF>
-Fluxes_broadband_gpu<TF>::Fluxes_broadband_gpu(const int ncol, const int nlev) :
-    flux_up    ({ncol, nlev}),
-    flux_dn    ({ncol, nlev}),
-    flux_dn_dir({ncol, nlev}),
-    flux_net   ({ncol, nlev})
+Fluxes_broadband_gpu<TF>::Fluxes_broadband_gpu(const int ncol_x, const int ncol_y, const int nlev) :
+    flux_up     ({ncol_x*ncol_y, nlev}),
+    flux_dn     ({ncol_x*ncol_y, nlev}),
+    flux_dn_dir ({ncol_x*ncol_y, nlev}),
+    flux_net    ({ncol_x*ncol_y, nlev}),
+    flux_toa_up ({ncol_x, ncol_y}),
+    flux_sfc_dir({ncol_x, ncol_y}),
+    flux_sfc_dif({ncol_x, ncol_y}),
+    flux_sfc_up ({ncol_x, ncol_y}),
+    flux_abs_dir({ncol_x, ncol_y, nlev}),
+    flux_abs_dif({ncol_x, ncol_y, nlev})
 {}
 
 template<typename TF>
@@ -252,12 +258,12 @@ void Fluxes_broadband_gpu<TF>::reduce(
 }
 
 template<typename TF>
-Fluxes_byband_gpu<TF>::Fluxes_byband_gpu(const int ncol, const int nlev, const int nbnd) :
-    Fluxes_broadband_gpu<TF>(ncol, nlev),
-    bnd_flux_up    ({ncol, nlev, nbnd}),
-    bnd_flux_dn    ({ncol, nlev, nbnd}),
-    bnd_flux_dn_dir({ncol, nlev, nbnd}),
-    bnd_flux_net   ({ncol, nlev, nbnd})
+Fluxes_byband_gpu<TF>::Fluxes_byband_gpu(const int ncol_x, const int ncol_y, const int nlev, const int nbnd) :
+    Fluxes_broadband_gpu<TF>(ncol_x, ncol_y, nlev),
+    bnd_flux_up    ({ncol_x * ncol_y, nlev, nbnd}),
+    bnd_flux_dn    ({ncol_x * ncol_y, nlev, nbnd}),
+    bnd_flux_dn_dir({ncol_x * ncol_y, nlev, nbnd}),
+    bnd_flux_net   ({ncol_x * ncol_y, nlev, nbnd})
 {}
 
 template<typename TF>

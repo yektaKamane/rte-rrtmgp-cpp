@@ -26,7 +26,9 @@
 #include "Cloud_optics.h"
 #include "Rte_lw.h"
 #include "Rte_sw.h"
+#include "Raytracer.h"
 #include "Source_functions.h"
+#include <curand_kernel.h>
 
 
 template<typename TF>
@@ -161,12 +163,14 @@ class Radiation_solver_shortwave
         #ifdef __CUDACC__
         void solve_gpu(
                 const bool switch_fluxes,
+                const bool switch_raytracing,
                 const bool switch_cloud_optics,
                 const bool switch_output_optical,
                 const bool switch_output_bnd_fluxes,
                 const Gas_concs_gpu<TF>& gas_concs,
                 const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
                 const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
+                const Array_gpu<TF,1>& grid_dims,
                 Array_gpu<TF,2>& col_dry,
                 const Array_gpu<TF,2>& sfc_alb_dir, const Array_gpu<TF,2>& sfc_alb_dif,
                 const Array_gpu<TF,1>& tsi_scaling, const Array_gpu<TF,1>& mu0,
@@ -177,7 +181,13 @@ class Radiation_solver_shortwave
                 Array_gpu<TF,2>& sw_flux_up, Array_gpu<TF,2>& sw_flux_dn,
                 Array_gpu<TF,2>& sw_flux_dn_dir, Array_gpu<TF,2>& sw_flux_net,
                 Array_gpu<TF,3>& sw_bnd_flux_up, Array_gpu<TF,3>& sw_bnd_flux_dn,
-                Array_gpu<TF,3>& sw_bnd_flux_dn_dir, Array_gpu<TF,3>& sw_bnd_flux_net);
+                Array_gpu<TF,3>& sw_bnd_flux_dn_dir, Array_gpu<TF,3>& sw_bnd_flux_net,
+                Array_gpu<TF,2>& rt_flux_toa_up,
+                Array_gpu<TF,2>& rt_flux_sfc_dir,
+                Array_gpu<TF,2>& rt_flux_sfc_dif,
+                Array_gpu<TF,2>& rt_flux_sfc_up,
+                Array_gpu<TF,3>& rt_flux_abs_dir,
+                Array_gpu<TF,3>& rt_flux_abs_dif);
 
         int get_n_gpt_gpu() const { return this->kdist_gpu->get_ngpt(); };
         int get_n_bnd_gpu() const { return this->kdist_gpu->get_nband(); };
@@ -199,6 +209,7 @@ class Radiation_solver_shortwave
         std::unique_ptr<Gas_optics_gpu<TF>> kdist_gpu;
         std::unique_ptr<Cloud_optics_gpu<TF>> cloud_optics_gpu;
         Rte_sw_gpu<TF> rte_sw;
+        Raytracer_gpu<TF> raytracer;
 
         std::unique_ptr<Optical_props_arry_gpu<TF>> optical_props;
 

@@ -14,18 +14,15 @@ namespace
     #ifdef RTE_RRTMGP_SINGLE_PRECISION
     // using Float = float;
     const Float Float_epsilon = FLT_EPSILON;
-    constexpr int block_size = 512;
-    constexpr int grid_size = 64;
+    // constexpr int block_size = 512;
+    // constexpr int grid_size = 64;
     #else
     // using Float = double;
     const Float Float_epsilon = DBL_EPSILON;
-    constexpr int block_size = 512;
-    constexpr int grid_size = 64;
+    // constexpr int block_size = 512;
+    // constexpr int grid_size = 64;
     #endif
     
-    constexpr int ngrid_h = 90;
-    constexpr int ngrid_v = 71;
-    constexpr Float k_null_gas_min = Float(1.e-3);
     constexpr Float kgrid_h = Float(24000.)/ngrid_h;
     constexpr Float kgrid_v = Float(8520.)/ngrid_v;
     constexpr Float w_thres = 0.5;
@@ -103,51 +100,6 @@ namespace
     
     __device__
     Float pow2(const Float d) { return d*d; }
-    
-    // inline void gpu_assert(cudaError_t code, const char *file, int line, bool abort=true)
-    // {
-    //     if (code != cudaSuccess)
-    //     {
-    //         fprintf(stderr,"CUDA_SAFE_CALL: %s %s %d\n", cudaGetErrorString(code), file, line);
-    //         if (abort) exit(code);
-    //     }
-    // }
-    
-    
-    //template<typename T>
-    //T* allocate_gpu(const int length)
-    //{
-    //    TF* data_ptr = Tools_gpu::allocate_gpu<T>(ncells);
-    //    //cuda_safe_call(cudaMemcpy(data_ptr, array.ptr(), ncells*sizeof(T), cudaMemcpyDeviceToDevice));
-    //    //
-    //    //T* data_ptr = nullptr;
-    //    //cuda_safe_call(cudaMalloc((void **) &data_ptr, length*sizeof(T)));
-    //
-    //    return data_ptr;
-    //}
-    //
-    //
-    //template<typename T>
-    //void free_gpu(T*& data_ptr)
-    //{
-    //    cuda_safe_call(cudaFree(data_ptr));
-    //    data_ptr = nullptr;
-    //}
-    //
-    //
-    //template<typename T>
-    //void copy_to_gpu(T* gpu_data, const T* cpu_data, const int length)
-    //{
-    //    cuda_safe_call(cudaMemcpy(gpu_data, cpu_data, length*sizeof(T), cudaMemcpyHostToDevice));
-    //}
-    //
-    //
-    //template<typename T>
-    //void copy_from_gpu(T* cpu_data, const T* gpu_data, const int length)
-    //{
-    //    cuda_safe_call(cudaMemcpy(cpu_data, gpu_data, length*sizeof(T), cudaMemcpyDeviceToHost));
-    //}
-    
     
     __device__
     Float rayleigh(const Float random_number)
@@ -284,22 +236,20 @@ void ray_tracer_kernel(
         Float* __restrict__ atmos_direct_count,
         Float* __restrict__ atmos_diffuse_count,
         const Optics_ext* __restrict__ k_ext, const Optics_scat* __restrict__ ssa_asy,
-        const Float k_ext_null_cld, const Float k_ext_null_gas,
         const Float surface_albedo,
         const Float x_size, const Float y_size, const Float z_size,
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,
         const int itot, const int jtot, const int ktot,
-        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants,
-        const Float* __restrict__ cloud_dims)
+        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants) // const Float* __restrict__ cloud_dims)
 {
     const int n = blockDim.x * blockIdx.x + threadIdx.x;
     Photon photon;
     Random_number_generator<Float> rng(n);
     Quasi_random_number_generator_2d qrng(qrng_vectors, qrng_constants, n * photons_to_shoot);
 
-    const Float cloud_min = cloud_dims[0];
-    const Float cloud_max = cloud_dims[1];
+    // const Float cloud_min = cloud_dims[0];
+    // const Float cloud_max = cloud_dims[1];
     const Float s_min = x_size * Float_epsilon;
 
     // Set up the initial photons.

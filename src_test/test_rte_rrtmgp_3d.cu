@@ -56,7 +56,7 @@ void read_and_set_vmr(
         }
         else if (n_dims == 3)
         {
-            if (dims.at("lay") == n_lay && dims.at("col_y") == n_col_y && dims.at("col_x") == n_col_x)
+            if (dims.at("lay") == n_lay && dims.at("y") == n_col_y && dims.at("x") == n_col_x)
                 gas_concs.set_vmr(gas_name,
                         Array<TF,2>(input_nc.get_variable<TF>(vmr_gas_name, {n_lay, n_col_y, n_col_x}), {n_col_x * n_col_y, n_lay}));
             else
@@ -86,7 +86,7 @@ void configure_memory_pool(int nlays, int ncols, int nchunks, int ngpts, int nbn
         {(nlays + 1) * nchunks * sizeof(TF), 10},
         {(nlays + 1) * nchunks * nbnds * sizeof(TF), 4},
         {(nlays + 1) * nchunks * ngpts * sizeof(int)/2, 6},
-        {(nlays + 1) * nchunks * ngpts * sizeof(TF), 18}
+        {(nlays + 1) * nchunks * sizeof(TF), 18}
     };
     #ifdef GPU_MEM_POOL
     Memory_pool_gpu::init_instance(pool_queues);
@@ -170,6 +170,7 @@ void solve_radiation(int argc, char** argv)
         {"shortwave"        , { true,  "Enable computation of shortwave radiation."}},
         {"longwave"         , { true,  "Enable computation of longwave radiation." }},
         {"fluxes"           , { true,  "Enable computation of fluxes."             }},
+        {"raytracing"       , { false, "Use raytracing for flux computation."      }},
         {"cloud-optics"     , { false, "Enable cloud optics."                      }},
         {"output-optical"   , { false, "Enable output of optical properties."      }},
         {"output-bnd-fluxes", { false, "Enable output of band fluxes."             }} };
@@ -180,6 +181,7 @@ void solve_radiation(int argc, char** argv)
     const bool switch_shortwave         = command_line_options.at("shortwave"        ).first;
     const bool switch_longwave          = command_line_options.at("longwave"         ).first;
     const bool switch_fluxes            = command_line_options.at("fluxes"           ).first;
+    const bool switch_raytracing        = command_line_options.at("raytracing"       ).first;
     const bool switch_cloud_optics      = command_line_options.at("cloud-optics"     ).first;
     const bool switch_output_optical    = command_line_options.at("output-optical"   ).first;
     const bool switch_output_bnd_fluxes = command_line_options.at("output-bnd-fluxes").first;
@@ -193,11 +195,31 @@ void solve_radiation(int argc, char** argv)
 
     Netcdf_file input_nc("rte_rrtmgp_input.nc", Netcdf_mode::Read);
 
-    const int n_col_x = input_nc.get_dimension_size("col_x");
-    const int n_col_y = input_nc.get_dimension_size("col_y");
+    const int n_col_x = input_nc.get_dimension_size("x");
+    const int n_col_y = input_nc.get_dimension_size("y");
     const int n_col = n_col_x * n_col_y;
     const int n_lay = input_nc.get_dimension_size("lay");
     const int n_lev = input_nc.get_dimension_size("lev");
+    const int n_z = input_nc.get_dimension_size("z");
+
+    // Read the x,y,z dimensions if raytracing is enabled
+    Array<TF,1> grid_dims({4});
+    Array<TF,1> grid_x;
+    Array<TF,1> grid_y;
+    Array<TF,1> grid_z;
+    if (switch_raytracing)
+    {
+        grid_x.set_dims({n_col_x});
+        grid_y.set_dims({n_col_y});
+        grid_z.set_dims({n_z});
+        grid_x = std::move(input_nc.get_variable<TF>("x", {n_col_x}));
+        grid_y = std::move(input_nc.get_variable<TF>("y", {n_col_y}));
+        grid_z = std::move(input_nc.get_variable<TF>("z", {n_z}));
+        grid_dims({1}) = grid_x({2}) - grid_x({1});
+        grid_dims({2}) = grid_y({2}) - grid_y({1});
+        grid_dims({3}) = grid_z({2}) - grid_z({1});
+        grid_dims({4}) = n_z;
+    }
 
     // Read the atmospheric fields.
     Array<TF,2> p_lay(input_nc.get_variable<TF>("p_lay", {n_lay, n_col_y, n_col_x}), {n_col, n_lay});
@@ -263,12 +285,23 @@ void solve_radiation(int argc, char** argv)
     Status::print_message("Preparing NetCDF output file.");
 
     Netcdf_file output_nc("rte_rrtmgp_output.nc", Netcdf_mode::Create);
-    output_nc.add_dimension("col_x", n_col_x);
-    output_nc.add_dimension("col_y", n_col_y);
+    output_nc.add_dimension("col", n_col);
+    output_nc.add_dimension("x", n_col_x);
+    output_nc.add_dimension("y", n_col_y);
     output_nc.add_dimension("lay", n_lay);
     output_nc.add_dimension("lev", n_lev);
     output_nc.add_dimension("pair", 2);
+    if (switch_raytracing) 
+    {
+        output_nc.add_dimension("z", n_z);
+        auto nc_x = output_nc.add_variable<TF>("x", {"x"});
+        auto nc_y = output_nc.add_variable<TF>("y", {"y"});
+        auto nc_z = output_nc.add_variable<TF>("z", {"z"});
+        nc_x.insert(grid_x.v(), {0});
+        nc_y.insert(grid_y.v(), {0});
+        nc_z.insert(grid_z.v(), {0});
 
+    }
     auto nc_lay = output_nc.add_variable<TF>("p_lay", {"lay", "col"});
     auto nc_lev = output_nc.add_variable<TF>("p_lev", {"lev", "col"});
 
@@ -365,7 +398,7 @@ void solve_radiation(int argc, char** argv)
             Array_gpu<TF,2> iwp_gpu(iwp);
             Array_gpu<TF,2> rel_gpu(rel);
             Array_gpu<TF,2> rei_gpu(rei);
-
+            
             cudaDeviceSynchronize();
             cudaEvent_t start;
             cudaEvent_t stop;
@@ -439,14 +472,14 @@ void solve_radiation(int argc, char** argv)
             auto nc_lw_band_lims_gpt = output_nc.add_variable<int>("lw_band_lims_gpt", {"band_lw", "pair"});
             nc_lw_band_lims_gpt.insert(rad_lw.get_band_lims_gpoint_gpu().v(), {0, 0});
 
-            auto nc_lw_tau = output_nc.add_variable<TF>("lw_tau", {"gpt_lw", "lay", "col_y", "col_x"});
+            auto nc_lw_tau = output_nc.add_variable<TF>("lw_tau", {"gpt_lw", "lay", "y", "x"});
             nc_lw_tau.insert(lw_tau_cpu.v(), {0, 0, 0, 0});
 
-            auto nc_lay_source     = output_nc.add_variable<TF>("lay_source"    , {"gpt_lw", "lay", "col_y", "col_x"});
-            auto nc_lev_source_inc = output_nc.add_variable<TF>("lev_source_inc", {"gpt_lw", "lay", "col_y", "col_x"});
-            auto nc_lev_source_dec = output_nc.add_variable<TF>("lev_source_dec", {"gpt_lw", "lay", "col_y", "col_x"});
+            auto nc_lay_source     = output_nc.add_variable<TF>("lay_source"    , {"gpt_lw", "lay", "y", "x"});
+            auto nc_lev_source_inc = output_nc.add_variable<TF>("lev_source_inc", {"gpt_lw", "lay", "y", "x"});
+            auto nc_lev_source_dec = output_nc.add_variable<TF>("lev_source_dec", {"gpt_lw", "lay", "y", "x"});
 
-            auto nc_sfc_source = output_nc.add_variable<TF>("sfc_source", {"gpt_lw", "col_y", "col_x"});
+            auto nc_sfc_source = output_nc.add_variable<TF>("sfc_source", {"gpt_lw", "y", "x"});
 
             nc_lay_source.insert    (lay_source_cpu.v()    , {0, 0, 0, 0});
             nc_lev_source_inc.insert(lev_source_inc_cpu.v(), {0, 0, 0, 0});
@@ -457,9 +490,9 @@ void solve_radiation(int argc, char** argv)
 
         if (switch_fluxes)
         {
-            auto nc_lw_flux_up  = output_nc.add_variable<TF>("lw_flux_up" , {"lev", "col_y", "col_x"});
-            auto nc_lw_flux_dn  = output_nc.add_variable<TF>("lw_flux_dn" , {"lev", "col_y", "col_x"});
-            auto nc_lw_flux_net = output_nc.add_variable<TF>("lw_flux_net", {"lev", "col_y", "col_x"});
+            auto nc_lw_flux_up  = output_nc.add_variable<TF>("lw_flux_up" , {"lev", "y", "x"});
+            auto nc_lw_flux_dn  = output_nc.add_variable<TF>("lw_flux_dn" , {"lev", "y", "x"});
+            auto nc_lw_flux_net = output_nc.add_variable<TF>("lw_flux_net", {"lev", "y", "x"});
 
             nc_lw_flux_up .insert(lw_flux_up_cpu .v(), {0, 0, 0});
             nc_lw_flux_dn .insert(lw_flux_dn_cpu .v(), {0, 0, 0});
@@ -467,9 +500,9 @@ void solve_radiation(int argc, char** argv)
 
             if (switch_output_bnd_fluxes)
             {
-                auto nc_lw_bnd_flux_up  = output_nc.add_variable<TF>("lw_bnd_flux_up" , {"band_lw", "lev", "col_y", "col_x"});
-                auto nc_lw_bnd_flux_dn  = output_nc.add_variable<TF>("lw_bnd_flux_dn" , {"band_lw", "lev", "col_y", "col_x"});
-                auto nc_lw_bnd_flux_net = output_nc.add_variable<TF>("lw_bnd_flux_net", {"band_lw", "lev", "col_y", "col_x"});
+                auto nc_lw_bnd_flux_up  = output_nc.add_variable<TF>("lw_bnd_flux_up" , {"band_lw", "lev", "y", "x"});
+                auto nc_lw_bnd_flux_dn  = output_nc.add_variable<TF>("lw_bnd_flux_dn" , {"band_lw", "lev", "y", "x"});
+                auto nc_lw_bnd_flux_net = output_nc.add_variable<TF>("lw_bnd_flux_net", {"band_lw", "lev", "y", "x"});
 
                 nc_lw_bnd_flux_up .insert(lw_bnd_flux_up_cpu.v(), {0, 0, 0, 0});
                 nc_lw_bnd_flux_dn .insert(lw_bnd_flux_dn_cpu.v(), {0, 0, 0, 0});
@@ -529,6 +562,14 @@ void solve_radiation(int argc, char** argv)
         Array_gpu<TF,2> sw_flux_dn;
         Array_gpu<TF,2> sw_flux_dn_dir;
         Array_gpu<TF,2> sw_flux_net;
+        
+        Array_gpu<TF,2> rt_flux_toa_up;
+        Array_gpu<TF,2> rt_flux_sfc_dir;
+        Array_gpu<TF,2> rt_flux_sfc_dif;
+        Array_gpu<TF,2> rt_flux_sfc_up;
+        Array_gpu<TF,3> rt_flux_abs_dir;
+        Array_gpu<TF,3> rt_flux_abs_dif;
+
 
         if (switch_fluxes)
         {
@@ -536,6 +577,16 @@ void solve_radiation(int argc, char** argv)
             sw_flux_dn    .set_dims({n_col, n_lev});
             sw_flux_dn_dir.set_dims({n_col, n_lev});
             sw_flux_net   .set_dims({n_col, n_lev});
+            if (switch_raytracing)
+            {
+                rt_flux_toa_up .set_dims({n_col_x, n_col_y});
+                rt_flux_sfc_dir.set_dims({n_col_x, n_col_y});
+                rt_flux_sfc_dif.set_dims({n_col_x, n_col_y});
+                rt_flux_sfc_up .set_dims({n_col_x, n_col_y});
+                rt_flux_abs_dir.set_dims({n_col_x, n_col_y, n_z});
+                rt_flux_abs_dif.set_dims({n_col_x, n_col_y, n_z});
+            }
+
         }
 
         Array_gpu<TF,3> sw_bnd_flux_up;
@@ -561,6 +612,7 @@ void solve_radiation(int argc, char** argv)
             Array_gpu<TF,2> p_lev_gpu(p_lev);
             Array_gpu<TF,2> t_lay_gpu(t_lay);
             Array_gpu<TF,2> t_lev_gpu(t_lev);
+            Array_gpu<TF,1> grid_dims_gpu(grid_dims);
             Array_gpu<TF,2> col_dry_gpu(col_dry);
             Array_gpu<TF,2> sfc_alb_dir_gpu(sfc_alb_dir);
             Array_gpu<TF,2> sfc_alb_dif_gpu(sfc_alb_dif);
@@ -570,7 +622,7 @@ void solve_radiation(int argc, char** argv)
             Array_gpu<TF,2> iwp_gpu(iwp);
             Array_gpu<TF,2> rel_gpu(rel);
             Array_gpu<TF,2> rei_gpu(rei);
-
+            
             cudaDeviceSynchronize();
             cudaEvent_t start;
             cudaEvent_t stop;
@@ -581,12 +633,14 @@ void solve_radiation(int argc, char** argv)
 
             rad_sw.solve_gpu(
                     switch_fluxes,
+                    switch_raytracing,
                     switch_cloud_optics,
                     switch_output_optical,
                     switch_output_bnd_fluxes,
                     gas_concs_gpu,
                     p_lay_gpu, p_lev_gpu,
                     t_lay_gpu, t_lev_gpu,
+                    grid_dims_gpu,
                     col_dry_gpu,
                     sfc_alb_dir_gpu, sfc_alb_dif_gpu,
                     tsi_scaling_gpu, mu0_gpu,
@@ -597,7 +651,13 @@ void solve_radiation(int argc, char** argv)
                     sw_flux_up, sw_flux_dn,
                     sw_flux_dn_dir, sw_flux_net,
                     sw_bnd_flux_up, sw_bnd_flux_dn,
-                    sw_bnd_flux_dn_dir, sw_bnd_flux_net);
+                    sw_bnd_flux_dn_dir, sw_bnd_flux_net,
+                    rt_flux_toa_up,
+                    rt_flux_sfc_dir,
+                    rt_flux_sfc_dif,
+                    rt_flux_sfc_up,
+                    rt_flux_abs_dir,
+                    rt_flux_abs_dif);
 
             cudaEventRecord(stop, 0);
             cudaEventSynchronize(stop);
@@ -618,9 +678,9 @@ void solve_radiation(int argc, char** argv)
         run_solver();
         cudaProfilerStop();
 
-        constexpr int n_measures=10;
-        for (int n=0; n<n_measures; ++n)
-            run_solver();
+        //constexpr int n_measures=10;
+        //for (int n=0; n<n_measures; ++n)
+        //    run_solver();
 
 
         // Store the output.
@@ -637,6 +697,13 @@ void solve_radiation(int argc, char** argv)
         Array<TF,3> sw_bnd_flux_dn_cpu(sw_bnd_flux_dn);
         Array<TF,3> sw_bnd_flux_dn_dir_cpu(sw_bnd_flux_dn_dir);
         Array<TF,3> sw_bnd_flux_net_cpu(sw_bnd_flux_net);
+        
+        Array<TF,2> rt_flux_toa_up_cpu(rt_flux_toa_up);
+        Array<TF,2> rt_flux_sfc_dir_cpu(rt_flux_sfc_dir);
+        Array<TF,2> rt_flux_sfc_dif_cpu(rt_flux_sfc_dif);
+        Array<TF,2> rt_flux_sfc_up_cpu(rt_flux_sfc_up);
+        Array<TF,3> rt_flux_abs_dir_cpu(rt_flux_abs_dir);
+        Array<TF,3> rt_flux_abs_dif_cpu(rt_flux_abs_dif);
 
         output_nc.add_dimension("gpt_sw", n_gpt_sw);
         output_nc.add_dimension("band_sw", n_bnd_sw);
@@ -649,36 +716,54 @@ void solve_radiation(int argc, char** argv)
             auto nc_sw_band_lims_gpt = output_nc.add_variable<int>("sw_band_lims_gpt", {"band_sw", "pair"});
             nc_sw_band_lims_gpt.insert(rad_sw.get_band_lims_gpoint_gpu().v(), {0, 0});
 
-            auto nc_sw_tau = output_nc.add_variable<TF>("sw_tau", {"gpt_sw", "lay", "col_y", "col_x"});
-            auto nc_ssa    = output_nc.add_variable<TF>("ssa"   , {"gpt_sw", "lay", "col_y", "col_x"});
-            auto nc_g      = output_nc.add_variable<TF>("g"     , {"gpt_sw", "lay", "col_y", "col_x"});
+            auto nc_sw_tau = output_nc.add_variable<TF>("sw_tau", {"gpt_sw", "lay", "y", "x"});
+            auto nc_ssa    = output_nc.add_variable<TF>("ssa"   , {"gpt_sw", "lay", "y", "x"});
+            auto nc_g      = output_nc.add_variable<TF>("g"     , {"gpt_sw", "lay", "y", "x"});
 
             nc_sw_tau.insert(sw_tau_cpu.v(), {0, 0, 0, 0});
             nc_ssa   .insert(ssa_cpu   .v(), {0, 0, 0, 0});
             nc_g     .insert(g_cpu     .v(), {0, 0, 0, 0});
 
-            auto nc_toa_source = output_nc.add_variable<TF>("toa_source", {"gpt_sw", "col_y", "col_x"});
+            auto nc_toa_source = output_nc.add_variable<TF>("toa_source", {"gpt_sw", "y", "x"});
             nc_toa_source.insert(toa_source_cpu.v(), {0, 0, 0});
         }
 
         if (switch_fluxes)
         {
-            auto nc_sw_flux_up     = output_nc.add_variable<TF>("sw_flux_up"    , {"lev", "col_y", "col_x"});
-            auto nc_sw_flux_dn     = output_nc.add_variable<TF>("sw_flux_dn"    , {"lev", "col_y", "col_x"});
-            auto nc_sw_flux_dn_dir = output_nc.add_variable<TF>("sw_flux_dn_dir", {"lev", "col_y", "col_x"});
-            auto nc_sw_flux_net    = output_nc.add_variable<TF>("sw_flux_net"   , {"lev", "col_y", "col_x"});
+            auto nc_sw_flux_up     = output_nc.add_variable<TF>("sw_flux_up"    , {"lev", "y", "x"});
+            auto nc_sw_flux_dn     = output_nc.add_variable<TF>("sw_flux_dn"    , {"lev", "y", "x"});
+            auto nc_sw_flux_dn_dir = output_nc.add_variable<TF>("sw_flux_dn_dir", {"lev", "y", "x"});
+            auto nc_sw_flux_net    = output_nc.add_variable<TF>("sw_flux_net"   , {"lev", "y", "x"});
 
             nc_sw_flux_up    .insert(sw_flux_up_cpu    .v(), {0, 0, 0});
             nc_sw_flux_dn    .insert(sw_flux_dn_cpu    .v(), {0, 0, 0});
             nc_sw_flux_dn_dir.insert(sw_flux_dn_dir_cpu.v(), {0, 0, 0});
             nc_sw_flux_net   .insert(sw_flux_net_cpu   .v(), {0, 0, 0});
 
+            if (switch_raytracing)
+            {
+                auto nc_rt_flux_toa_up  = output_nc.add_variable<TF>("rt_flux_toa_up",  {"y","x"});    
+                auto nc_rt_flux_sfc_dir = output_nc.add_variable<TF>("rt_flux_sfc_dir", {"y","x"}); 
+                auto nc_rt_flux_sfc_dif = output_nc.add_variable<TF>("rt_flux_sfc_dif", {"y","x"}); 
+                auto nc_rt_flux_sfc_up  = output_nc.add_variable<TF>("rt_flux_sfc_up",  {"y","x"}); 
+                auto nc_rt_flux_abs_dir = output_nc.add_variable<TF>("rt_flux_abs_dir", {"z","y","x"}); 
+                auto nc_rt_flux_abs_dif = output_nc.add_variable<TF>("rt_flux_abs_dif", {"z","y","x"}); 
+            
+                nc_rt_flux_toa_up .insert(rt_flux_toa_up_cpu .v(), {0,0});
+                nc_rt_flux_sfc_dir.insert(rt_flux_sfc_dir_cpu.v(), {0,0});
+                nc_rt_flux_sfc_dif.insert(rt_flux_sfc_dif_cpu.v(), {0,0});
+                nc_rt_flux_sfc_up .insert(rt_flux_sfc_up_cpu .v(), {0,0});
+                nc_rt_flux_abs_dir.insert(rt_flux_abs_dir_cpu.v(), {0,0,0});
+                nc_rt_flux_abs_dif.insert(rt_flux_abs_dif_cpu.v(), {0,0,0});
+            }
+            
+            
             if (switch_output_bnd_fluxes)
             {
-                auto nc_sw_bnd_flux_up     = output_nc.add_variable<TF>("sw_bnd_flux_up"    , {"band_sw", "lev", "col_y", "col_x"});
-                auto nc_sw_bnd_flux_dn     = output_nc.add_variable<TF>("sw_bnd_flux_dn"    , {"band_sw", "lev", "col_y", "col_x"});
-                auto nc_sw_bnd_flux_dn_dir = output_nc.add_variable<TF>("sw_bnd_flux_dn_dir", {"band_sw", "lev", "col_y", "col_x"});
-                auto nc_sw_bnd_flux_net    = output_nc.add_variable<TF>("sw_bnd_flux_net"   , {"band_sw", "lev", "col_y", "col_x"});
+                auto nc_sw_bnd_flux_up     = output_nc.add_variable<TF>("sw_bnd_flux_up"    , {"band_sw", "lev", "y", "x"});
+                auto nc_sw_bnd_flux_dn     = output_nc.add_variable<TF>("sw_bnd_flux_dn"    , {"band_sw", "lev", "y", "x"});
+                auto nc_sw_bnd_flux_dn_dir = output_nc.add_variable<TF>("sw_bnd_flux_dn_dir", {"band_sw", "lev", "y", "x"});
+                auto nc_sw_bnd_flux_net    = output_nc.add_variable<TF>("sw_bnd_flux_net"   , {"band_sw", "lev", "y", "x"});
 
                 nc_sw_bnd_flux_up    .insert(sw_bnd_flux_up_cpu    .v(), {0, 0, 0, 0});
                 nc_sw_bnd_flux_dn    .insert(sw_bnd_flux_dn_cpu    .v(), {0, 0, 0, 0});

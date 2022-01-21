@@ -47,6 +47,9 @@ namespace rrtmgp_kernel_launcher_cuda
     void reorder12x21(const int ni, const int nj, const Array_gpu<TF,2>& arr_in, Array_gpu<TF,2>& arr_out);
 
     template<typename TF>
+    void zero_array(const int ni, const int nj, const int nk, const int nn, Array_gpu<TF,4>& arr);
+
+    template<typename TF>
     void zero_array(const int ni, const int nj, const int nk, Array_gpu<TF,3>& arr);
     
     template<typename TF>

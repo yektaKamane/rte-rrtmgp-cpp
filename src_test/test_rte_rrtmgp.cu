@@ -568,6 +568,15 @@ void solve_radiation(int argc, char** argv)
             Array_gpu<TF,2> rel_gpu(rel);
             Array_gpu<TF,2> rei_gpu(rei);
 
+            Array_gpu<TF,1> grid_dims;
+            Array_gpu<TF,2> rt_flux_toa_up;
+            Array_gpu<TF,2> rt_flux_sfc_dir;
+            Array_gpu<TF,2> rt_flux_sfc_dif;
+            Array_gpu<TF,2> rt_flux_sfc_up;
+            Array_gpu<TF,3> rt_flux_abs_dir;
+            Array_gpu<TF,3> rt_flux_abs_dif;
+            bool switch_raytracing;
+
             cudaDeviceSynchronize();
             cudaEvent_t start;
             cudaEvent_t stop;
@@ -578,12 +587,14 @@ void solve_radiation(int argc, char** argv)
 
             rad_sw.solve_gpu(
                     switch_fluxes,
+                    switch_raytracing,
                     switch_cloud_optics,
                     switch_output_optical,
                     switch_output_bnd_fluxes,
                     gas_concs_gpu,
                     p_lay_gpu, p_lev_gpu,
                     t_lay_gpu, t_lev_gpu,
+                    grid_dims,
                     col_dry_gpu,
                     sfc_alb_dir_gpu, sfc_alb_dif_gpu,
                     tsi_scaling_gpu, mu0_gpu,
@@ -594,7 +605,9 @@ void solve_radiation(int argc, char** argv)
                     sw_flux_up, sw_flux_dn,
                     sw_flux_dn_dir, sw_flux_net,
                     sw_bnd_flux_up, sw_bnd_flux_dn,
-                    sw_bnd_flux_dn_dir, sw_bnd_flux_net);
+                    sw_bnd_flux_dn_dir, sw_bnd_flux_net,
+                    rt_flux_toa_up, rt_flux_sfc_dir, rt_flux_sfc_dif,
+                    rt_flux_sfc_up, rt_flux_abs_dir, rt_flux_abs_dif);
 
             cudaEventRecord(stop, 0);
             cudaEventSynchronize(stop);

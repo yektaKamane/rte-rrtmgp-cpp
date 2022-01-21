@@ -20,6 +20,7 @@
 #include <boost/algorithm/string.hpp>
 #include <cmath>
 #include <numeric>
+#include <curand_kernel.h>
 
 #include "Radiation_solver.h"
 #include "Status.h"
@@ -478,7 +479,7 @@ void Radiation_solver_longwave<TF>::solve_gpu(
             constexpr int n_ang = 1;
 
             std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
-                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
+                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, 1, n_lev);
 
             rte_lw.rte_lw(
                     optical_props,
@@ -527,12 +528,14 @@ Radiation_solver_shortwave<TF>::Radiation_solver_shortwave(
 template<typename TF>
 void Radiation_solver_shortwave<TF>::solve_gpu(
         const bool switch_fluxes,
+        const bool switch_raytracing,
         const bool switch_cloud_optics,
         const bool switch_output_optical,
         const bool switch_output_bnd_fluxes,
         const Gas_concs_gpu<TF>& gas_concs,
         const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
         const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
+        const Array_gpu<TF,1>& grid_dims,
         Array_gpu<TF,2>& col_dry,
         const Array_gpu<TF,2>& sfc_alb_dir, const Array_gpu<TF,2>& sfc_alb_dif,
         const Array_gpu<TF,1>& tsi_scaling, const Array_gpu<TF,1>& mu0,
@@ -543,14 +546,28 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         Array_gpu<TF,2>& sw_flux_up, Array_gpu<TF,2>& sw_flux_dn,
         Array_gpu<TF,2>& sw_flux_dn_dir, Array_gpu<TF,2>& sw_flux_net,
         Array_gpu<TF,3>& sw_bnd_flux_up, Array_gpu<TF,3>& sw_bnd_flux_dn,
-        Array_gpu<TF,3>& sw_bnd_flux_dn_dir, Array_gpu<TF,3>& sw_bnd_flux_net)
+        Array_gpu<TF,3>& sw_bnd_flux_dn_dir, Array_gpu<TF,3>& sw_bnd_flux_net,
+        Array_gpu<TF,2>& rt_flux_toa_up,
+        Array_gpu<TF,2>& rt_flux_sfc_dir,
+        Array_gpu<TF,2>& rt_flux_sfc_dif,
+        Array_gpu<TF,2>& rt_flux_sfc_up,
+        Array_gpu<TF,3>& rt_flux_abs_dir,
+        Array_gpu<TF,3>& rt_flux_abs_dif)
+
 {
     const int n_col = p_lay.dim(1);
     const int n_lay = p_lay.dim(2);
     const int n_lev = p_lev.dim(2);
     const int n_gpt = this->kdist_gpu->get_ngpt();
     const int n_bnd = this->kdist_gpu->get_nband();
-
+    
+    const int n_col_x = (switch_raytracing) ? rt_flux_sfc_dir.dim(1) : n_col;
+    const int n_col_y = (switch_raytracing) ? rt_flux_sfc_dir.dim(2) : 1;
+    const int dx_grid = (switch_raytracing) ? grid_dims({1}) : 0;
+    const int dy_grid = (switch_raytracing) ? grid_dims({2}) : 0;
+    const int dz_grid = (switch_raytracing) ? grid_dims({3}) : 0;
+    const int n_z     = (switch_raytracing) ? grid_dims({4}) : 0;
+    
     const BOOL_TYPE top_at_1 = p_lay({1, 1}) < p_lay({1, n_lay});
 
     optical_props = std::make_unique<Optical_props_2str_gpu<TF>>(n_col, n_lay, *kdist_gpu);
@@ -573,6 +590,15 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_dn);
         rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_dn_dir);
         rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_net);
+        if (switch_raytracing)
+        {
+            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_toa_up);
+            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_dir);
+            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_dif);
+            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_up);
+            rrtmgp_kernel_launcher_cuda::zero_array(n_z, n_col_y, n_col_x, rt_flux_abs_dir);
+            rrtmgp_kernel_launcher_cuda::zero_array(n_z, n_col_y, n_col_x, rt_flux_abs_dif);
+        }
     }
 
     const Array<int, 2>& band_limits_gpt(this->kdist_gpu->get_band_lims_gpoint());
@@ -631,7 +657,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         if (switch_fluxes)
         {  
             std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
-                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col, n_lev);
+                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col_x, n_col_y, n_lev);
             
             rte_sw.rte_sw(
                     optical_props,
@@ -645,11 +671,43 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                     (*fluxes).get_flux_dn(),
                     (*fluxes).get_flux_dn_dir());
             
+            if (switch_raytracing)
+            {
+                Int photons_to_shoot = pow(2,22);
+                TF zenith_angle = std::acos(mu0({1}));
+                TF azimuth_angle = 0.00001;
+                
+                raytracer.trace_rays(
+                        photons_to_shoot,
+                        n_col_x, n_col_y, n_z,
+                        dx_grid, dy_grid, dz_grid,
+                        dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
+                        dynamic_cast<Optical_props_2str_gpu<TF>&>(*cloud_optical_props),
+                        sfc_alb_dir({band,1}), zenith_angle, 
+                        azimuth_angle,
+                        (*fluxes).get_flux_dn(),
+                        (*fluxes).get_flux_toa_up(),
+                        (*fluxes).get_flux_sfc_dir(),
+                        (*fluxes).get_flux_sfc_dif(),
+                        (*fluxes).get_flux_sfc_up(),
+                        (*fluxes).get_flux_abs_dir(),
+                        (*fluxes).get_flux_abs_dif());
+
+            }
+
             (*fluxes).net_flux();
 
             gpoint_kernel_launcher_cuda::add_from_gpoint(
                     n_col, n_lev, sw_flux_up, sw_flux_dn, sw_flux_dn_dir, sw_flux_net,
                     (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
+            
+            if (switch_raytracing)
+            {
+                gpoint_kernel_launcher_cuda::add_from_gpoint(
+                        n_col_x, n_col_y, rt_flux_toa_up, rt_flux_sfc_dir, rt_flux_sfc_dif, rt_flux_sfc_up,
+                        (*fluxes).get_flux_toa_up(), (*fluxes).get_flux_sfc_dir(), (*fluxes).get_flux_sfc_dif(), (*fluxes).get_flux_sfc_up());
+
+            }
 
             if (switch_output_bnd_fluxes)
             {

@@ -4,10 +4,17 @@
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
 using Float = float;
+constexpr int block_size = 512;
+constexpr int grid_size = 64;
 #else
 using Float = double;
+constexpr int block_size = 512;
+constexpr int grid_size = 64;
 #endif
 using Int = unsigned long long;
+constexpr int ngrid_h = 90;
+constexpr int ngrid_v = 71;
+constexpr Float k_null_gas_min = Float(1.e-3);
 
 
 struct Optics_ext
@@ -23,7 +30,6 @@ struct Optics_scat
     Float asy;
 };
 
-
 __global__
 void ray_tracer_kernel(
         const Int photons_to_shoot,
@@ -36,12 +42,10 @@ void ray_tracer_kernel(
         Float* __restrict__ atmos_direct_count,
         Float* __restrict__ atmos_diffuse_count,
         const Optics_ext* __restrict__ k_ext, const Optics_scat* __restrict__ ssa_asy,
-        const Float k_ext_null_cld, const Float k_ext_null_gas,
         const Float surface_albedo,
         const Float x_size, const Float y_size, const Float z_size,
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,
         const int itot, const int jtot, const int ktot,
-        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants,
-        const Float* __restrict__ cloud_dims);
+        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants); // const Float* __restrict__ cloud_dims);
 #endif
