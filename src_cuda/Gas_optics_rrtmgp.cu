@@ -1293,7 +1293,6 @@ void Gas_optics_rrtmgp_gpu<TF>::set_solar_variability(
                 + (sb_index - b_offset) * this->solar_source_sunspot({igpt});
     }
     this->solar_source_gpu = this->solar_source;
-    this->solar_source_gpu.dump("solarsource");
 }
 
 
