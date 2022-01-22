@@ -23,8 +23,6 @@ namespace
     // constexpr int grid_size = 64;
     #endif
     
-    constexpr Float kgrid_h = Float(24000.)/ngrid_h;
-    constexpr Float kgrid_v = Float(8520.)/ngrid_v;
     constexpr Float w_thres = 0.5;
     
     
@@ -243,6 +241,9 @@ void ray_tracer_kernel(
         const int itot, const int jtot, const int ktot,
         curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants) // const Float* __restrict__ cloud_dims)
 {
+    const Float kgrid_h = x_size/Float(ngrid_h);
+    const Float kgrid_v = z_size/Float(ngrid_v);
+    
     const int n = blockDim.x * blockIdx.x + threadIdx.x;
     Photon photon;
     Random_number_generator<Float> rng(n);
@@ -273,7 +274,6 @@ void ray_tracer_kernel(
     while (photons_shot < photons_to_shoot)
     {
         const bool photon_generation_completed = (photons_shot == photons_to_shoot - 1);
-        
         // if d_max is zero, find current grid and maximum distance
         if (d_max == Float(0.))
         {
@@ -287,7 +287,7 @@ void ray_tracer_kernel(
             const int ijk = i + j*ngrid_h + k*ngrid_h*ngrid_h;
             k_ext_null = k_null_grid[ijk];
         }
-
+        
         if (!transition)
         {
             tau = sample_tau(rng());

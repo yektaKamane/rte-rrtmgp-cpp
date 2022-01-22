@@ -185,7 +185,7 @@ void solve_radiation(int argc, char** argv)
     const bool switch_cloud_optics      = command_line_options.at("cloud-optics"     ).first;
     const bool switch_output_optical    = command_line_options.at("output-optical"   ).first;
     const bool switch_output_bnd_fluxes = command_line_options.at("output-bnd-fluxes").first;
-
+    
     // Print the options to the screen.
     print_command_line_options(command_line_options);
 
@@ -678,9 +678,9 @@ void solve_radiation(int argc, char** argv)
         run_solver();
         cudaProfilerStop();
 
-        //constexpr int n_measures=10;
-        //for (int n=0; n<n_measures; ++n)
-        //    run_solver();
+        // constexpr int n_measures=10;
+        // for (int n=0; n<n_measures; ++n)
+        //     run_solver();
 
 
         // Store the output.

@@ -186,7 +186,6 @@ void Raytracer_gpu<TF>::trace_rays(
     // bundle optical properties in struct
     Array_gpu<Optics_ext,3> k_ext({ncol_x, ncol_y, nlay});
     Array_gpu<Optics_scat,3> ssa_asy({ncol_x, ncol_y, nlay});
-    printf(" raytracing step 1 \n");
     
     bundles_optical_props<<<grid_3d, block_3d>>>(
             ncol_x, ncol_y, nlay, dz_grid,
@@ -208,7 +207,6 @@ void Raytracer_gpu<TF>::trace_rays(
     
     Array_gpu<TF,3> k_null_grid({ngrid_h, ngrid_h, ngrid_v});
     const TF k_ext_null_min = TF(1e-3);
-    printf(" raytracing step 2 \n");
     create_knull_grid<<<grid_kn, block_kn>>>(
             ncol_x, ncol_y, nlay, k_ext_null_min,
             k_ext.ptr(), k_null_grid.ptr());
@@ -236,9 +234,9 @@ void Raytracer_gpu<TF>::trace_rays(
 
     dim3 grid{grid_size}, block{block_size};
 
-    printf(" raytracing step 3 \n");
+    const Int photons_per_thread = photons_to_shoot / (grid_size * block_size);
     ray_tracer_kernel<<<grid, block>>>(
-            photons_to_shoot, k_null_grid.ptr(),
+            photons_per_thread, k_null_grid.ptr(),
             toa_down_count.ptr(),
             toa_up_count.ptr(),
             surface_down_direct_count.ptr(),
@@ -253,11 +251,9 @@ void Raytracer_gpu<TF>::trace_rays(
             dir_x, dir_y, dir_z,
             ncol_x, ncol_y, nlay,
             this->qrng_vectors_gpu, this->qrng_constants_gpu); 
-
     
     // convert counts to fluxes
-    const TF flux_per_ray = photons_to_shoot/(ncol_x * ncol_y) * background_profiles({1, nlay});
-    printf(" raytracing step 4 \n");
+    const TF flux_per_ray = background_profiles({1, nlay}) / (photons_to_shoot/(ncol_x * ncol_y));
 
     count_to_flux_2d<<<grid_2d, block_2d>>>(
             ncol_x, ncol_y, flux_per_ray,
@@ -276,7 +272,6 @@ void Raytracer_gpu<TF>::trace_rays(
             atmos_diffuse_count.ptr(),
             flux_abs_dir.ptr(),
             flux_abs_dif.ptr());
-    printf(" raytracing done \n");
 }
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION

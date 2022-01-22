@@ -676,7 +676,6 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                 Int photons_to_shoot = pow(2,22);
                 TF zenith_angle = std::acos(mu0({1}));
                 TF azimuth_angle = 0.00001;
-                
                 raytracer.trace_rays(
                         photons_to_shoot,
                         n_col_x, n_col_y, n_z,

@@ -4,11 +4,11 @@
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
 using Float = float;
-constexpr int block_size = 1024;
+constexpr int block_size = 512;
 constexpr int grid_size = 64;
 #else
 using Float = double;
-constexpr int block_size = 1024;
+constexpr int block_size = 512;
 constexpr int grid_size = 64;
 #endif
 using Int = unsigned long long;
