@@ -673,6 +673,8 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             
             if (switch_raytracing)
             {
+                if (!switch_cloud_optics) rrtmgp_kernel_launcher_cuda::zero_array(n_z, n_col, (*cloud_optical_props).get_tau());
+
                 Int photons_to_shoot = pow(2,22);
                 TF zenith_angle = std::acos(mu0({1}));
                 TF azimuth_angle = 0.00001;
