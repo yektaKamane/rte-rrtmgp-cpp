@@ -42,6 +42,11 @@ namespace gpoint_kernel_launcher_cuda
     
     template<typename TF>
     void add_from_gpoint(const int ncol, const int nlay,
+                  Array_gpu<TF,3>& var1_full, Array_gpu<TF,3>& var2_full,
+                  const Array_gpu<TF,3>& var1_sub, const Array_gpu<TF,3>& var2_sub);
+    
+    template<typename TF>
+    void add_from_gpoint(const int ncol, const int nlay,
                   Array_gpu<TF,2>& var1_full, Array_gpu<TF,2>& var2_full, Array_gpu<TF,2>& var3_full,
                   const Array_gpu<TF,2>& var1_sub, const Array_gpu<TF,2>& var2_sub, const Array_gpu<TF,2>& var3_sub);
 

@@ -1,6 +1,7 @@
 #include "Raytracer.h"
 #include "Array.h"
 #include <curand_kernel.h>
+#include "rrtmgp_kernel_launcher_cuda.h"
 #include "raytracer_kernels.h"
 #include "Optical_props.h"
 namespace
@@ -129,9 +130,6 @@ namespace
             flux_2[idx] = count_2[idx] * flux_per_ray;
         }
     }
-
-
-
 }
 
 template<typename TF>
@@ -207,11 +205,12 @@ void Raytracer_gpu<TF>::trace_rays(
     
     Array_gpu<TF,3> k_null_grid({ngrid_h, ngrid_h, ngrid_v});
     const TF k_ext_null_min = TF(1e-3);
+    
     create_knull_grid<<<grid_kn, block_kn>>>(
             ncol_x, ncol_y, nlay, k_ext_null_min,
             k_ext.ptr(), k_null_grid.ptr());
     
-    // output arrays
+    // initialise output arrays and set to 0
     Array_gpu<TF,2> toa_down_count({ncol_x, ncol_y});
     Array_gpu<TF,2> toa_up_count({ncol_x, ncol_y});
     Array_gpu<TF,2> surface_down_direct_count({ncol_x, ncol_y});
@@ -219,7 +218,14 @@ void Raytracer_gpu<TF>::trace_rays(
     Array_gpu<TF,2> surface_up_count({ncol_x, ncol_y});
     Array_gpu<TF,3> atmos_direct_count({ncol_x, ncol_y, nlay});
     Array_gpu<TF,3> atmos_diffuse_count({ncol_x, ncol_y, nlay});
-   
+    
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, toa_down_count);
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, toa_up_count);
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, surface_down_direct_count);
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, surface_down_diffuse_count);
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, surface_up_count);
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, nlay, atmos_direct_count);
+    rrtmgp_kernel_launcher_cuda::zero_array(ncol_x, ncol_y, nlay, atmos_diffuse_count);
     
     // domain sizes
     const TF x_size = ncol_x * dx_grid;
@@ -235,6 +241,7 @@ void Raytracer_gpu<TF>::trace_rays(
     dim3 grid{grid_size}, block{block_size};
 
     const Int photons_per_thread = photons_to_shoot / (grid_size * block_size);
+    
     ray_tracer_kernel<<<grid, block>>>(
             photons_per_thread, k_null_grid.ptr(),
             toa_down_count.ptr(),

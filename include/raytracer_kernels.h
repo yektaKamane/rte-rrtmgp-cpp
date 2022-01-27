@@ -9,7 +9,7 @@ constexpr int grid_size = 64;
 #else
 using Float = double;
 constexpr int block_size = 512;
-constexpr int grid_size = 64;
+constexpr int grid_size = 256;
 #endif
 using Int = unsigned long long;
 constexpr int ngrid_h = 90;
@@ -47,5 +47,5 @@ void ray_tracer_kernel(
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,
         const int itot, const int jtot, const int ktot,
-        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants); // const Float* __restrict__ cloud_dims);
+        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants);
 #endif

@@ -31,6 +31,22 @@ void add_from_gpoint_kernel(const int ncol, const int nlay,
 
 template<typename TF>__global__
 void add_from_gpoint_kernel(const int ncol, const int nlay,
+              TF* __restrict__ var1_full, TF* __restrict__ var2_full,
+              const TF* __restrict__ var1_sub, const TF* __restrict__ var2_sub)
+{
+    const int icol = blockIdx.x*blockDim.x + threadIdx.x;
+    const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
+
+    if ( (icol < ncol) && (ilay < nlay) )
+    {
+        const int idx = icol + ilay*ncol;
+        var1_full[idx] += var1_sub[idx];
+        var2_full[idx] += var2_sub[idx];
+    }
+}
+
+template<typename TF>__global__
+void add_from_gpoint_kernel(const int ncol, const int nlay,
               TF* __restrict__ var1_full, TF* __restrict__ var2_full, TF* __restrict__ var3_full,
               const TF* __restrict__ var1_sub, const TF* __restrict__ var2_sub, const TF* __restrict__ var3_sub)
 {
