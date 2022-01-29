@@ -481,8 +481,8 @@ template<> __forceinline__ __device__ constexpr double tmin() { return DBL_EPSIL
 template<> __forceinline__ __device__ constexpr float tmin() { return FLT_EPSILON; }
 
 template<typename TF> __device__ constexpr TF tkmin();
-template<> __forceinline__ __device__ constexpr double tkmin() { return TF(1000.) * DBL_EPSILON; }
-template<> __forceinline__ __device__ constexpr float tkmin() { return TF(1000.) * FLT_EPSILON; }
+template<> __forceinline__ __device__ constexpr double tkmin() { return double(1000.) * DBL_EPSILON; }
+template<> __forceinline__ __device__ constexpr float tkmin() { return float(1000.) * FLT_EPSILON; }
 
 
 template<typename TF> __device__
