@@ -25,6 +25,7 @@
 #include "Status.h"
 #include "Netcdf_interface.h"
 #include "Array.h"
+#include "raytracer_kernels.h"
 #include "Radiation_solver.h"
 #include "Gas_concs.h"
 #include "Types.h"
@@ -95,6 +96,7 @@ void configure_memory_pool(int nlays, int ncols, int nchunks, int ngpts, int nbn
 
 bool parse_command_line_options(
         std::map<std::string, std::pair<bool, std::string>>& command_line_options,
+        Int& ray_count_exponent,
         int argc, char** argv)
 {
     for (int i=1; i<argc; ++i)
@@ -115,30 +117,50 @@ bool parse_command_line_options(
             return true;
         }
 
-        // Check if option starts with --
-        if (argument[0] != '-' || argument[1] != '-')
+        //check if option is integer n (2**n rays)
+        if (std::isdigit(argument[0]))
         {
-            std::string error = argument + " is an illegal command line option.";
-            throw std::runtime_error(error);
+            if (argument.size() > 1)
+            {
+                for (int i=1; i<argument.size(); ++i)
+                {
+                    if (!std::isdigit(argument[i]))
+                    {
+                        std::string error = argument + " is an illegal command line option.";
+                        throw std::runtime_error(error);
+                    }
+
+                }
+            }
+            ray_count_exponent = Int(std::stoi(argv[i]));
         }
         else
-            argument.erase(0, 2);
-
-        // Check if option has prefix no-
-        bool enable = true;
-        if (argument[0] == 'n' && argument[1] == 'o' && argument[2] == '-')
         {
-            enable = false;
-            argument.erase(0, 3);
-        }
+            // Check if option starts with --
+            if (argument[0] != '-' || argument[1] != '-')
+            {
+                std::string error = argument + " is an illegal command line option.";
+                throw std::runtime_error(error);
+            }
+            else
+                argument.erase(0, 2);
 
-        if (command_line_options.find(argument) == command_line_options.end())
-        {
-            std::string error = argument + " is an illegal command line option.";
-            throw std::runtime_error(error);
+            // Check if option has prefix no-
+            bool enable = true;
+            if (argument[0] == 'n' && argument[1] == 'o' && argument[2] == '-')
+            {
+                enable = false;
+                argument.erase(0, 3);
+            }
+
+            if (command_line_options.find(argument) == command_line_options.end())
+            {
+                std::string error = argument + " is an illegal command line option.";
+                throw std::runtime_error(error);
+            }
+            else
+                command_line_options.at(argument).first = enable;
         }
-        else
-            command_line_options.at(argument).first = enable;
     }
 
     return false;
@@ -174,9 +196,11 @@ void solve_radiation(int argc, char** argv)
         {"cloud-optics"     , { false, "Enable cloud optics."                      }},
         {"output-optical"   , { false, "Enable output of optical properties."      }},
         {"output-bnd-fluxes", { false, "Enable output of band fluxes."             }} };
+    Int ray_count_exponent = 22;
 
-    if (parse_command_line_options(command_line_options, argc, argv))
+    if (parse_command_line_options(command_line_options, ray_count_exponent, argc, argv))
         return;
+    
 
     const bool switch_shortwave         = command_line_options.at("shortwave"        ).first;
     const bool switch_longwave          = command_line_options.at("longwave"         ).first;
@@ -188,6 +212,19 @@ void solve_radiation(int argc, char** argv)
     
     // Print the options to the screen.
     print_command_line_options(command_line_options);
+
+    Int ray_count;
+    if (switch_raytracing)
+    {
+        ray_count = pow(2,ray_count_exponent);
+        if (ray_count < block_size*grid_size)
+        {
+            std::string error = "Cannot shoot " + std::to_string(ray_count) + " rays with current block/grid sizes.";
+            throw std::runtime_error(error);
+        }
+        else
+            Status::print_message("Using "+ std::to_string(Int(pow(2, ray_count_exponent))) + " rays");
+    }
 
 
     ////// READ THE ATMOSPHERIC DATA //////
@@ -637,6 +674,7 @@ void solve_radiation(int argc, char** argv)
                     switch_cloud_optics,
                     switch_output_optical,
                     switch_output_bnd_fluxes,
+                    ray_count,
                     gas_concs_gpu,
                     p_lay_gpu, p_lev_gpu,
                     t_lay_gpu, t_lev_gpu,

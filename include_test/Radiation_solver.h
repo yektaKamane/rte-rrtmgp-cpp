@@ -27,6 +27,7 @@
 #include "Rte_lw.h"
 #include "Rte_sw.h"
 #include "Raytracer.h"
+#include "raytracer_kernels.h"
 #include "Source_functions.h"
 #include <curand_kernel.h>
 
@@ -167,6 +168,7 @@ class Radiation_solver_shortwave
                 const bool switch_cloud_optics,
                 const bool switch_output_optical,
                 const bool switch_output_bnd_fluxes,
+                const Int ray_count,
                 const Gas_concs_gpu<TF>& gas_concs,
                 const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
                 const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,

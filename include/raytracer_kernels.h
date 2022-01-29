@@ -1,5 +1,7 @@
 #ifndef RAYTRACER_KERNELS_H
 #define RAYTRACER_KERNELS_H
+#include <curand_kernel.h>
+
 
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION

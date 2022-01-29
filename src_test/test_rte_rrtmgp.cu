@@ -591,6 +591,7 @@ void solve_radiation(int argc, char** argv)
                     switch_cloud_optics,
                     switch_output_optical,
                     switch_output_bnd_fluxes,
+                    0,
                     gas_concs_gpu,
                     p_lay_gpu, p_lev_gpu,
                     t_lay_gpu, t_lev_gpu,

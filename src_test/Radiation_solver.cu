@@ -532,6 +532,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         const bool switch_cloud_optics,
         const bool switch_output_optical,
         const bool switch_output_bnd_fluxes,
+        const Int ray_count,
         const Gas_concs_gpu<TF>& gas_concs,
         const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
         const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
@@ -670,16 +671,16 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                     (*fluxes).get_flux_up(),
                     (*fluxes).get_flux_dn(),
                     (*fluxes).get_flux_dn_dir());
-            
+
             if (switch_raytracing)
             {
-                if (!switch_cloud_optics) rrtmgp_kernel_launcher_cuda::zero_array(n_z, n_col, (*cloud_optical_props).get_tau());
+                if (!switch_cloud_optics) rrtmgp_kernel_launcher_cuda::zero_array(n_col, n_lay, cloud_optical_props->get_tau());
 
-                Int photons_to_shoot = pow(2,22);
                 TF zenith_angle = std::acos(mu0({1}));
-                TF azimuth_angle = 0.00001;
+                TF azimuth_angle = 3.14; // sun approximately from south
+                
                 raytracer.trace_rays(
-                        photons_to_shoot,
+                        ray_count,
                         n_col_x, n_col_y, n_z,
                         dx_grid, dy_grid, dz_grid,
                         dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
@@ -693,7 +694,6 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                         (*fluxes).get_flux_sfc_up(),
                         (*fluxes).get_flux_abs_dir(),
                         (*fluxes).get_flux_abs_dif());
-
             }
 
             (*fluxes).net_flux();
@@ -708,6 +708,9 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                         n_col_x, n_col_y, rt_flux_toa_up, rt_flux_sfc_dir, rt_flux_sfc_dif, rt_flux_sfc_up,
                         (*fluxes).get_flux_toa_up(), (*fluxes).get_flux_sfc_dir(), (*fluxes).get_flux_sfc_dif(), (*fluxes).get_flux_sfc_up());
 
+                gpoint_kernel_launcher_cuda::add_from_gpoint(
+                        n_col, n_z, rt_flux_abs_dir, rt_flux_abs_dif,
+                        (*fluxes).get_flux_abs_dir(), (*fluxes).get_flux_abs_dif());
             }
 
             if (switch_output_bnd_fluxes)
@@ -717,7 +720,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                         (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
             }
         }
-    }    
+    }
 }
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
