@@ -57,7 +57,7 @@ namespace
     __device__
     Float dot(const Vector v1, const Vector v2)
     {
-        return v1.x*v2.x + v1.y*v2.y + v1.z*v1.z;
+        return v1.x*v2.x + v1.y*v2.y + v1.z*v2.z;
     }
     
     __device__
