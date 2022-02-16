@@ -159,7 +159,8 @@ void Raytracer_gpu<TF>::trace_rays(
         const TF surface_albedo,
         const TF zenith_angle,
         const TF azimuth_angle,
-        const Array_gpu<TF,2>& background_profiles,
+        const TF flux_tod_dir,
+        const TF flux_tod_dif,//        Array_gpu<TF,2>& background_profiles,
         Array_gpu<TF,2>& flux_toa_up,
         Array_gpu<TF,2>& flux_sfc_dir,
         Array_gpu<TF,2>& flux_sfc_dif,
@@ -242,6 +243,8 @@ void Raytracer_gpu<TF>::trace_rays(
 
     const Int photons_per_thread = photons_to_shoot / (grid_size * block_size);
     
+    const TF flux_tod_tot = flux_tod_dir + flux_tod_dif;
+    const TF diffuse_fraction = flux_tod_dif / flux_tod_tot;
     ray_tracer_kernel<<<grid, block>>>(
             photons_per_thread, k_null_grid.ptr(),
             toa_down_count.ptr(),
@@ -252,7 +255,8 @@ void Raytracer_gpu<TF>::trace_rays(
             atmos_direct_count.ptr(),
             atmos_diffuse_count.ptr(),
             k_ext.ptr(), ssa_asy.ptr(),
-            surface_albedo, 
+            surface_albedo,
+            diffuse_fraction,
             x_size, y_size, z_size,
             dx_grid, dy_grid, dz_grid,
             dir_x, dir_y, dir_z,
@@ -260,8 +264,8 @@ void Raytracer_gpu<TF>::trace_rays(
             this->qrng_vectors_gpu, this->qrng_constants_gpu); 
     
     // convert counts to fluxes
-    const TF flux_per_ray = background_profiles({1, nlay}) / (photons_to_shoot/(ncol_x * ncol_y));
-
+    const TF flux_per_ray = flux_tod_tot / (photons_to_shoot / (ncol_x * ncol_y));
+    
     count_to_flux_2d<<<grid_2d, block_2d>>>(
             ncol_x, ncol_y, flux_per_ray,
             toa_up_count.ptr(), 

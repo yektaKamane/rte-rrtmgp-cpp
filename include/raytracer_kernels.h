@@ -45,6 +45,7 @@ void ray_tracer_kernel(
         Float* __restrict__ atmos_diffuse_count,
         const Optics_ext* __restrict__ k_ext, const Optics_scat* __restrict__ ssa_asy,
         const Float surface_albedo,
+        const Float diffuse_faction,
         const Float x_size, const Float y_size, const Float z_size,
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,

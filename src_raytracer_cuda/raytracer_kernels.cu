@@ -44,21 +44,6 @@ namespace
     static inline __device__
     Vector operator+(const Vector v1, const Vector v2) { return Vector{v1.x+v2.x, v1.y+v2.y, v1.z+v2.z}; }
     
-    
-    // struct Optics_ext
-    // {
-    //     Float gas;
-    //     Float cloud;
-    // };
-    // 
-    // 
-    // struct Optics_scat
-    // {
-    //     Float ssa;
-    //     Float asy;
-    // };
-    
-    
     __device__
     Vector cross(const Vector v1, const Vector v2)
     {
@@ -134,41 +119,6 @@ namespace
         return ntot < ntot_max ? ntot : ntot_max-1;
     }
     
-    __device__
-    inline void reset_photon(
-            Photon& photon, Int& photons_shot, Float* __restrict__ const toa_down_count,
-            const unsigned int random_number_x, const unsigned int random_number_y,
-            const Float x_size, const Float y_size, const Float z_size,
-            const Float dx_grid, const Float dy_grid, const Float dz_grid,
-            const Float dir_x, const Float dir_y, const Float dir_z,
-            const bool generation_completed, Float& weight,
-            const int itot, const int jtot)
-    {
-        ++photons_shot;
-        if (!generation_completed)
-        {
-            const int i = random_number_x / static_cast<unsigned int>((1ULL << 32) / itot);
-            const int j = random_number_y / static_cast<unsigned int>((1ULL << 32) / jtot);
-    
-            photon.position.x = x_size * random_number_x / (1ULL << 32);
-            photon.position.y = y_size * random_number_y / (1ULL << 32);
-            photon.position.z = z_size;
-    
-            photon.direction.x = dir_x;
-            photon.direction.y = dir_y;
-            photon.direction.z = dir_z;
-    
-            photon.kind = Photon_kind::Direct;
-            
-            const int ij = i + j*itot;
-            atomicAdd(&toa_down_count[ij], Float(1.));
-        
-            weight = 1;
-    
-        }
-    }
-    
-    
     template<typename T>
     struct Random_number_generator
     {
@@ -194,6 +144,53 @@ namespace
     __device__ float Random_number_generator<float>::operator()()
     {
         return 1.f - curand_uniform(&state);
+    }
+    
+    __device__
+    inline void reset_photon(
+            Photon& photon, Int& photons_shot, Float* __restrict__ const toa_down_count,
+            const unsigned int random_number_x, const unsigned int random_number_y,
+            Random_number_generator<Float>& rng,
+            const Float diffuse_fraction,
+            const Float x_size, const Float y_size, const Float z_size,
+            const Float dx_grid, const Float dy_grid, const Float dz_grid,
+            const Float dir_x, const Float dir_y, const Float dir_z,
+            const bool generation_completed, Float& weight,
+            const int itot, const int jtot)
+    {
+        ++photons_shot;
+        if (!generation_completed)
+        {
+            const int i = random_number_x / static_cast<unsigned int>((1ULL << 32) / itot);
+            const int j = random_number_y / static_cast<unsigned int>((1ULL << 32) / jtot);
+    
+            photon.position.x = x_size * random_number_x / (1ULL << 32);
+            photon.position.y = y_size * random_number_y / (1ULL << 32);
+            photon.position.z = z_size;
+    
+            if (rng() >= diffuse_fraction)
+            {
+                photon.direction.x = dir_x;
+                photon.direction.y = dir_y;
+                photon.direction.z = dir_z;
+            }
+            else
+            {
+                const Float zenith_angle = Float(M_PI) * rng();
+                const Float azimuth_angle = Float(2.*M_PI) * rng();
+                photon.direction.x = -std::sin(zenith_angle) * std::cos(azimuth_angle);
+                photon.direction.y = -std::sin(zenith_angle) * std::sin(azimuth_angle);
+                photon.direction.z = -std::cos(zenith_angle);
+            }
+
+            photon.kind = Photon_kind::Direct;
+            
+            const int ij = i + j*itot;
+            atomicAdd(&toa_down_count[ij], Float(1.));
+        
+            weight = 1;
+    
+        }
     }
     
     
@@ -235,6 +232,7 @@ void ray_tracer_kernel(
         Float* __restrict__ atmos_diffuse_count,
         const Optics_ext* __restrict__ k_ext, const Optics_scat* __restrict__ ssa_asy,
         const Float surface_albedo,
+        const Float diffuse_fraction,
         const Float x_size, const Float y_size, const Float z_size,
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,
@@ -260,7 +258,8 @@ void ray_tracer_kernel(
 
     reset_photon(
             photon, photons_shot, toa_down_count,
-            qrng.x(), qrng.y(),
+            qrng.x(), qrng.y(), rng,
+            diffuse_fraction,
             x_size, y_size, z_size,
             dx_grid, dy_grid, dz_grid,
             dir_x, dir_y, dir_z,
@@ -342,7 +341,8 @@ void ray_tracer_kernel(
                 {
                     reset_photon(
                             photon, photons_shot, toa_down_count,
-                            qrng.x(), qrng.y(),
+                            qrng.x(), qrng.y(), rng,
+                            diffuse_fraction,
                             x_size, y_size, z_size,
                             dx_grid, dy_grid, dz_grid,
                             dir_x, dir_y, dir_z,
@@ -361,7 +361,8 @@ void ray_tracer_kernel(
                 d_max = Float(0.);
                 reset_photon(
                         photon, photons_shot, toa_down_count,
-                        qrng.x(), qrng.y(),
+                        qrng.x(), qrng.y(), rng,
+                        diffuse_fraction,
                         x_size, y_size, z_size,
                         dx_grid, dy_grid, dz_grid,
                         dir_x, dir_y, dir_z,
@@ -473,7 +474,8 @@ void ray_tracer_kernel(
                 d_max = Float(0.);
                 reset_photon(
                         photon, photons_shot, toa_down_count,
-                        qrng.x(), qrng.y(),
+                        qrng.x(), qrng.y(), rng,
+                        diffuse_fraction,
                         x_size, y_size, z_size,
                         dx_grid, dy_grid, dz_grid,
                         dir_x, dir_y, dir_z,
