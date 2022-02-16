@@ -25,6 +25,12 @@ if(USECUDA)
   
   add_executable(test_rte_rrtmgp_3d_gpu Radiation_solver.cu test_rte_rrtmgp_3d.cu)
   target_link_libraries(test_rte_rrtmgp_3d_gpu rte_rrtmgp rte_rrtmgp_cuda rte_rrtmgp_raytracer_cuda curand ${LIBS} m)
+  
+  add_executable(raytracer_io raytracer_3d_io.cu)
+  target_link_libraries(raytracer_io rte_rrtmgp_raytracer_cuda curand ${LIBS} m)
+  
+  add_executable(raytracer_bw raytracer_3d_bw.cu)
+  target_link_libraries(raytracer_bw rte_rrtmgp_raytracer_cuda curand ${LIBS} m)
 endif()
 
 add_executable(test_rte_rrtmgp Radiation_solver.cpp test_rte_rrtmgp.cpp)

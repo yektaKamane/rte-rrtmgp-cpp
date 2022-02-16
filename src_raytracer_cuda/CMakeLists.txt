@@ -1,4 +1,5 @@
 FILE(GLOB sourcefiles
+    "../src_raytracer_cuda/raytracer_kernels_bw.cu"
     "../src_raytracer_cuda/raytracer_kernels.cu"
     "../src_raytracer_cuda/Raytracer.cu")
 
