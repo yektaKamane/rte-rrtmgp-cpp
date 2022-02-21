@@ -119,11 +119,16 @@ void run_ray_tracer(const Int n_photons)
             for (int i=0; i<ngrid_h; ++i)
             {
                 const int i0 = i*fi;
-                const int i1 = std::floor((i+1)*fi);
+                const Float i1_tmp = (i+1)*fi;
+                const int i1 = std::floor(i1_tmp) > i1_tmp ? std::floor(i1_tmp) : std::floor(i1_tmp)+1;
+                
                 const int j0 = j*fj;
-                const int j1 = std::floor((j+1)*fj);
+                const Float j1_tmp = (j+1)*fj;
+                const int j1 = std::floor(j1_tmp) > j1_tmp ? std::floor(j1_tmp) : std::floor(j1_tmp)+1;
+                
                 const int k0 = k*fk;
-                const int k1 = std::floor((k+1)*fk);
+                const Float k1_tmp = (k+1)*fk;
+                const int k1 = std::floor(k1_tmp) > k1_tmp ? std::floor(k1_tmp) : std::floor(k1_tmp)+1;
 
                 for (int kk=k0; kk<k1; ++kk)
                     for (int jj=j0; jj<j1; ++jj)

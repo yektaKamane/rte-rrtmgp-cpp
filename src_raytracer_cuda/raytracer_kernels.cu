@@ -1,7 +1,7 @@
 #include <float.h>
 #include <curand_kernel.h>
 #include "raytracer_kernels.h"
-
+#include <iostream>
 
 namespace
 {
@@ -270,21 +270,23 @@ void ray_tracer_kernel(
     Float d_max = Float(0.);
     Float k_ext_null;
     bool transition = false;
+    
+    int i_n, j_n, k_n, ijk_n;
     while (photons_shot < photons_to_shoot)
     {
         const bool photon_generation_completed = (photons_shot == photons_to_shoot - 1);
         // if d_max is zero, find current grid and maximum distance
         if (d_max == Float(0.))
         {
-            const int i = float_to_int(photon.position.x, kgrid_h, ngrid_h);
-            const int j = float_to_int(photon.position.y, kgrid_h, ngrid_h);
-            const int k = float_to_int(photon.position.z, kgrid_v, ngrid_v);
-            const Float sx = abs((photon.direction.x > 0) ? ((i+1) * kgrid_h - photon.position.x)/photon.direction.x : (i*kgrid_h - photon.position.x)/photon.direction.x);
-            const Float sy = abs((photon.direction.y > 0) ? ((j+1) * kgrid_h - photon.position.y)/photon.direction.y : (j*kgrid_h - photon.position.y)/photon.direction.y);
-            const Float sz = abs((photon.direction.z > 0) ? ((k+1) * kgrid_v - photon.position.z)/photon.direction.z : (k*kgrid_v - photon.position.z)/photon.direction.z);
+            i_n = float_to_int(photon.position.x, kgrid_h, ngrid_h);
+            j_n = float_to_int(photon.position.y, kgrid_h, ngrid_h);
+            k_n = float_to_int(photon.position.z, kgrid_v, ngrid_v);
+            const Float sx = abs((photon.direction.x > 0) ? ((i_n+1) * kgrid_h - photon.position.x)/photon.direction.x : (i_n*kgrid_h - photon.position.x)/photon.direction.x);
+            const Float sy = abs((photon.direction.y > 0) ? ((j_n+1) * kgrid_h - photon.position.y)/photon.direction.y : (j_n*kgrid_h - photon.position.y)/photon.direction.y);
+            const Float sz = abs((photon.direction.z > 0) ? ((k_n+1) * kgrid_v - photon.position.z)/photon.direction.z : (k_n*kgrid_v - photon.position.z)/photon.direction.z);
             d_max = min(sx, min(sy, sz));
-            const int ijk = i + j*ngrid_h + k*ngrid_h*ngrid_h;
-            k_ext_null = k_null_grid[ijk];
+            ijk_n = i_n + j_n*ngrid_h + k_n*ngrid_h*ngrid_h;
+            k_ext_null = k_null_grid[ijk_n];
         }
         
         if (!transition)
@@ -398,10 +400,9 @@ void ray_tracer_kernel(
             Float dy = photon.direction.y * dn;
             Float dz = photon.direction.z * dn;
 
-            photon.position.x += dx;
-            photon.position.y += dy;
-            photon.position.z += dz;
-            
+            photon.position.x = (dx > 0) ? min(photon.position.x + dx, (i_n+1) * kgrid_h - s_min) : max(photon.position.x + dx, (i_n) * kgrid_h + s_min);
+            photon.position.y = (dy > 0) ? min(photon.position.y + dy, (j_n+1) * kgrid_h - s_min) : max(photon.position.y + dy, (j_n) * kgrid_h + s_min);
+            photon.position.z = (dz > 0) ? min(photon.position.z + dz, (k_n+1) * kgrid_v - s_min) : max(photon.position.z + dz, (k_n) * kgrid_v + s_min);
 
             // Calculate the 3D index.
             const int i = float_to_int(photon.position.x, dx_grid, itot);
@@ -420,7 +421,6 @@ void ray_tracer_kernel(
             else
                 write_photon_out(&atmos_diffuse_count[ijk], weight*(1-f_no_abs));
             
-
             // Update weights (see Iwabuchi 2006: https://doi.org/10.1175/JAS3755.1)
             weight *= f_no_abs;
             if (weight < w_thres)
