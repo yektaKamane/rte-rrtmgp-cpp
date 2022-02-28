@@ -4,6 +4,7 @@
 #include <iostream>
 #include <vector>
 #include <chrono>
+#include <limits>
 inline void gpu_assert(cudaError_t code, const char *file, int line, bool abort=true)
 {
     if (code != cudaSuccess)
@@ -49,18 +50,16 @@ void run_ray_tracer(const Int n_photons)
     const int jtot = 240;
     const int ktot = 284;
 
-    const int icam=512;
-    const int jcam=512;
+    const int icam=1024;
+    const int jcam=1024;
 
     const Float x_size = itot*dx_grid;
     const Float y_size = jtot*dy_grid;
     const Float z_size = ktot*dz_grid;
 
     // Radiation properties.
-    const Float surface_albedo = 0.2;
-    const Float zenith_angle = 30.*(M_PI/180.);
-    const Float azimuth_angle = 20.*(M_PI/180.);
-    const Float diffuse_fraction = .0;
+    const Float zenith_angle = 50.*(M_PI/180.);
+    const Float azimuth_angle = 200.*(M_PI/180.);
     const Float dir_x = -std::sin(zenith_angle) * std::cos(azimuth_angle);
     const Float dir_y = -std::sin(zenith_angle) * std::sin(azimuth_angle);
     const Float dir_z = -std::cos(zenith_angle);
@@ -86,11 +85,21 @@ void run_ray_tracer(const Int n_photons)
     std::vector<Float> k_ext_cloud_tmp(itot*jtot*ktot);
     std::vector<Float> ssa_tmp(itot*jtot*ktot);
     std::vector<Float> asy_tmp(itot*jtot*ktot);
+    std::vector<Float> diff_frac_tmp(1);
+    std::vector<Float> tod_frac_tmp(1);
+    std::vector<Float> albedo_tmp(1);
 
     load_binary("k_ext_gas", k_ext_gas_tmp.data(), itot*jtot*ktot);
     load_binary("k_ext_cloud", k_ext_cloud_tmp.data(), itot*jtot*ktot);
     load_binary("ssa", ssa_tmp.data(), itot*jtot*ktot);
     load_binary("asy", asy_tmp.data(), itot*jtot*ktot);
+    
+    load_binary("diff_frac", diff_frac_tmp.data(), 1);
+    load_binary("tod_frac", tod_frac_tmp.data(), 1);
+    load_binary("albedo", albedo_tmp.data(), 1);
+    const Float diffuse_fraction = diff_frac_tmp[0];
+    const Float tod_fraction = tod_frac_tmp[0];
+    const Float surface_albedo = albedo_tmp[0];
 
     // Process the input data.
     Float k_ext_null = 0;
@@ -116,38 +125,79 @@ void run_ray_tracer(const Int n_photons)
     const Float fj = (Float)jtot/ngrid_h;
     const Float fk = (Float)ktot/ngrid_v;
 
-    std::vector<Float> k_null_grid(ngrid_h*ngrid_h*ngrid_v, max(k_null_gas_min, k_ext_null_gas));
+    std::vector<Grid_knull> k_null_grid(ngrid_h*ngrid_h*ngrid_v);//max(k_null_gas_min, k_ext_null_gas));
     for (int k=0; k<ngrid_v; ++k)
         for (int j=0; j<ngrid_h; ++j)
             for (int i=0; i<ngrid_h; ++i)
             {
                 const int i0 = i*fi;
-                const int i1 = std::floor((i+1)*fi);
+                const Float i1_tmp = (i+1)*fi;
+                const int i1 = min(itot,(int)(std::floor(i1_tmp) > i1_tmp ? std::floor(i1_tmp) : std::floor(i1_tmp)+1));
+                
                 const int j0 = j*fj;
-                const int j1 = std::floor((j+1)*fj);
+                const Float j1_tmp = (j+1)*fj;
+                const int j1 = min(jtot,(int)(std::floor(j1_tmp) > j1_tmp ? std::floor(j1_tmp) : std::floor(j1_tmp)+1));
+                
                 const int k0 = k*fk;
-                const int k1 = std::floor((k+1)*fk);
+                const Float k1_tmp = (k+1)*fk;
+                const int k1 = min(ktot,(int)(std::floor(k1_tmp) > k1_tmp ? std::floor(k1_tmp) : std::floor(k1_tmp)+1));
 
+                const int ijk_grid = i + j*ngrid_h + k*ngrid_h*ngrid_h; 
+                Float k_abs_min = std::numeric_limits<Float>::max();
+                Float k_ext_min = std::numeric_limits<Float>::max();
+                Float k_ext_max = Float(0.); 
                 for (int kk=k0; kk<k1; ++kk)
                     for (int jj=j0; jj<j1; ++jj)
                         for (int ii=i0; ii<i1; ++ii)
                         {
                             const int ijk_orig = ii + jj*itot + kk*itot*jtot; 
-                            const int ijk_grid = i + j*ngrid_h + k*ngrid_h*ngrid_h; 
-                            if (k_ext_cloud_tmp[ijk_orig] > Float(0.))
-                            {
-                                k_null_grid[ijk_grid] = k_ext_null;
-                            }
+                            const Float k_ext_tot = k_ext[ijk_orig].gas + k_ext[ijk_orig].cloud;
+                            k_abs_min = min(k_abs_min, k_ext_tot * (1-ssa_tmp[ijk_orig]));
+                            k_ext_min = min(k_ext_min, k_ext_tot);
+                            k_ext_max = max(k_ext_max, k_ext_tot);
                         }
+                 if (k_ext_min == k_ext_max) k_ext_min = k_ext_max * Float(0.9);
+                 //printf ( "%e %e \n",k_ext_min,k_ext_max);
+                 k_null_grid[ijk_grid].k_min = k_ext_min;
+                 k_null_grid[ijk_grid].k_max = k_ext_max;
+                 k_null_grid[ijk_grid].abs_min = k_abs_min;
             }
+    // std::vector<Float> k_null_grid(ngrid_h*ngrid_h*ngrid_v, Float(0.));//max(k_null_gas_min, k_ext_null_gas));
+    // for (int k=0; k<ngrid_v; ++k)
+    //     for (int j=0; j<ngrid_h; ++j)
+    //         for (int i=0; i<ngrid_h; ++i)
+    //         {
+    //             const int i0 = i*fi;
+    //             const Float i1_tmp = (i+1)*fi;
+    //             const int i1 = min(itot,(int)(std::floor(i1_tmp) > i1_tmp ? std::floor(i1_tmp) : std::floor(i1_tmp)+1));
+    //             
+    //             const int j0 = j*fj;
+    //             const Float j1_tmp = (j+1)*fj;
+    //             const int j1 = min(jtot,(int)(std::floor(j1_tmp) > j1_tmp ? std::floor(j1_tmp) : std::floor(j1_tmp)+1));
+    //             
+    //             const int k0 = k*fk;
+    //             const Float k1_tmp = (k+1)*fk;
+    //             const int k1 = min(ktot,(int)(std::floor(k1_tmp) > k1_tmp ? std::floor(k1_tmp) : std::floor(k1_tmp)+1));
+
+    //             const int ijk_grid = i + j*ngrid_h + k*ngrid_h*ngrid_h; 
+    //             Float k_ext_null_tmp = Float(0.); 
+    //             for (int kk=k0; kk<k1; ++kk)
+    //                 for (int jj=j0; jj<j1; ++jj)
+    //                     for (int ii=i0; ii<i1; ++ii)
+    //                     {
+    //                         const int ijk_orig = ii + jj*itot + kk*itot*jtot; 
+    //                         k_ext_null_tmp = max(k_ext_null_tmp, k_ext[ijk_orig].gas + k_ext[ijk_orig].cloud);
+    //                     }
+    //              k_null_grid[ijk_grid] = k_ext_null_tmp;
+    //         }
 
     //// PREPARE OUTPUT ARRAYS ////
     std::vector<Float> camera_count(icam*jcam);
-    std::vector<int> counter(1);
+    std::vector<int> counter(2);
 
     //// COPY THE DATA TO THE GPU.
     // kn grid
-    Float* k_null_grid_gpu = allocate_gpu<Float>(ngrid_h*ngrid_h*ngrid_v);
+    Grid_knull* k_null_grid_gpu = allocate_gpu<Grid_knull>(ngrid_h*ngrid_h*ngrid_v);
     copy_to_gpu(k_null_grid_gpu, k_null_grid.data(), ngrid_h*ngrid_h*ngrid_v);
     
     // Input array.
@@ -159,7 +209,7 @@ void run_ray_tracer(const Int n_photons)
 
     // Output arrays. Copy them in order to enable restarts later.
     Float* camera_count_gpu = allocate_gpu<Float>(icam*jcam);
-    int* counter_gpu = allocate_gpu<int>(1);
+    int* counter_gpu = allocate_gpu<int>(2);
 
     copy_to_gpu(camera_count_gpu, camera_count.data(), icam*jcam);
 
@@ -204,6 +254,7 @@ void run_ray_tracer(const Int n_photons)
             k_ext_gpu, ssa_asy_gpu,
             surface_albedo,
             diffuse_fraction,
+            tod_fraction,
             x_size, y_size, z_size,
             dx_grid, dy_grid, dz_grid,
             dir_x, dir_y, dir_z,
@@ -220,7 +271,7 @@ void run_ray_tracer(const Int n_photons)
 
     //// COPY OUTPUT BACK TO CPU ////
     copy_from_gpu(camera_count.data(), camera_count_gpu, icam*jcam);
-    copy_from_gpu(counter.data(), counter_gpu, 1);
+    copy_from_gpu(counter.data(), counter_gpu, 2);
     printf("%d \n",counter[0]);
     //for (int i=0; i<icam*jcam; ++i) printf("%f \n",camera_count[i]);
     
@@ -239,6 +290,7 @@ void run_ray_tracer(const Int n_photons)
     };
 
     save_binary("camera", camera_count.data(), icam*jcam);
+    save_binary("knull", k_null_grid.data(), ngrid_h*ngrid_h*ngrid_v);
 }
 
 

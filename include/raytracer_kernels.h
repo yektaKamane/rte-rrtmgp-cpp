@@ -6,7 +6,7 @@
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
 using Float = float;
-constexpr int block_size = 1024;
+constexpr int block_size = 512;
 constexpr int grid_size = 512;
 #else
 using Float = double;
@@ -14,7 +14,7 @@ constexpr int block_size = 512;
 constexpr int grid_size = 256;
 #endif
 using Int = unsigned long long;
-constexpr int ngrid_h = 90;
+constexpr int ngrid_h = 4;//90;
 constexpr int ngrid_v = 71;
 constexpr Float k_null_gas_min = Float(1.e-3);
 

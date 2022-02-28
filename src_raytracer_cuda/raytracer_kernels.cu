@@ -249,7 +249,7 @@ void ray_tracer_kernel(
 
     // const Float cloud_min = cloud_dims[0];
     // const Float cloud_max = cloud_dims[1];
-    const Float s_min = x_size * Float_epsilon;
+    const Float s_min = max(max(x_size,y_size),z_size) * Float_epsilon;
 
     // Set up the initial photons.
     const bool completed = false;
@@ -270,8 +270,9 @@ void ray_tracer_kernel(
     Float d_max = Float(0.);
     Float k_ext_null;
     bool transition = false;
-    
-    int i_n, j_n, k_n, ijk_n;
+   
+    bool new_photon = true;
+    int i_n, j_n, k_n;
     while (photons_shot < photons_to_shoot)
     {
         const bool photon_generation_completed = (photons_shot == photons_to_shoot - 1);
@@ -285,8 +286,8 @@ void ray_tracer_kernel(
             const Float sy = abs((photon.direction.y > 0) ? ((j_n+1) * kgrid_h - photon.position.y)/photon.direction.y : (j_n*kgrid_h - photon.position.y)/photon.direction.y);
             const Float sz = abs((photon.direction.z > 0) ? ((k_n+1) * kgrid_v - photon.position.z)/photon.direction.z : (k_n*kgrid_v - photon.position.z)/photon.direction.z);
             d_max = min(sx, min(sy, sz));
-            ijk_n = i_n + j_n*ngrid_h + k_n*ngrid_h*ngrid_h;
-            k_ext_null = k_null_grid[ijk_n];
+            const int ijk = i_n + j_n*ngrid_h + k_n*ngrid_h*ngrid_h;
+            k_ext_null = k_null_grid[ijk];
         }
         
         if (!transition)
@@ -305,7 +306,18 @@ void ray_tracer_kernel(
             photon.position.x += dx;
             photon.position.y += dy;
             photon.position.z += dz;
-
+            
+            if ((photon.position.z <= Float(8500.)) && new_photon)
+            {
+                const int i = float_to_int(photon.position.x, dx_grid, itot);
+                const int j = float_to_int(photon.position.y, dy_grid, jtot);
+                const int ij = i + j*itot;
+                new_photon = false;
+                //if (photon.kind == Photon_kind::Direct)
+                //    write_photon_out(&surface_down_direct_count[ij], weight);
+                //else if (photon.kind == Photon_kind::Diffuse)
+                //    write_photon_out(&surface_down_diffuse_count[ij], weight);
+            }
             // surface hit
             if (photon.position.z < Float_epsilon)
             {        
@@ -315,7 +327,7 @@ void ray_tracer_kernel(
                 const int ij = i + j*itot;
                 d_max = Float(0.);
         
-                // Add surface irradiance
+                //// Add surface irradiance
                 if (photon.kind == Photon_kind::Direct)
                     write_photon_out(&surface_down_direct_count[ij], weight);
                 else if (photon.kind == Photon_kind::Diffuse)
@@ -341,6 +353,7 @@ void ray_tracer_kernel(
                 }
                 else
                 {
+                    new_photon = true;
                     reset_photon(
                             photon, photons_shot, toa_down_count,
                             qrng.x(), qrng.y(), rng,
@@ -361,6 +374,7 @@ void ray_tracer_kernel(
                 const int ij = i + j*itot;
                 write_photon_out(&toa_up_count[ij], weight);
                 d_max = Float(0.);
+                    new_photon = true;
                 reset_photon(
                         photon, photons_shot, toa_down_count,
                         qrng.x(), qrng.y(), rng,
@@ -403,6 +417,17 @@ void ray_tracer_kernel(
             photon.position.x = (dx > 0) ? min(photon.position.x + dx, (i_n+1) * kgrid_h - s_min) : max(photon.position.x + dx, (i_n) * kgrid_h + s_min);
             photon.position.y = (dy > 0) ? min(photon.position.y + dy, (j_n+1) * kgrid_h - s_min) : max(photon.position.y + dy, (j_n) * kgrid_h + s_min);
             photon.position.z = (dz > 0) ? min(photon.position.z + dz, (k_n+1) * kgrid_v - s_min) : max(photon.position.z + dz, (k_n) * kgrid_v + s_min);
+            if ((photon.position.z <= Float(8500.)) && new_photon)
+            {
+                const int i = float_to_int(photon.position.x, dx_grid, itot);
+                const int j = float_to_int(photon.position.y, dy_grid, jtot);
+                const int ij = i + j*itot;
+                new_photon = false;
+                //if (photon.kind == Photon_kind::Direct)
+                //    write_photon_out(&surface_down_direct_count[ij], weight);
+                //else if (photon.kind == Photon_kind::Diffuse)
+                //    write_photon_out(&surface_down_diffuse_count[ij], weight);
+            }
 
             // Calculate the 3D index.
             const int i = float_to_int(photon.position.x, dx_grid, itot);
@@ -472,6 +497,7 @@ void ray_tracer_kernel(
             else
             {
                 d_max = Float(0.);
+                    new_photon = true;
                 reset_photon(
                         photon, photons_shot, toa_down_count,
                         qrng.x(), qrng.y(), rng,

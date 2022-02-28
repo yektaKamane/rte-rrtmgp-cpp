@@ -584,7 +584,8 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         
     Array<int,2> cld_mask_liq({n_col, n_lay});
     Array<int,2> cld_mask_ice({n_col, n_lay});
-    
+    Array<TF,1> flx_dir({34}); 
+    Array<TF,1> flx_dif({34}); 
     if (switch_fluxes)
     {
         rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_up);
@@ -671,6 +672,10 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                     (*fluxes).get_flux_up(),
                     (*fluxes).get_flux_dn(),
                     (*fluxes).get_flux_dn_dir());
+            Array<TF,2> flux_tot((*fluxes).get_flux_dn());
+            Array<TF,2> flux_dir((*fluxes).get_flux_dn_dir());
+            flx_dir({igpt}) = flux_dir({1,1});
+            flx_dif({igpt}) = flux_tot({1,1}) - flux_dir({1,1});
 
             if (switch_raytracing)
             {
@@ -722,6 +727,8 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             }
         }
     }
+    flx_dir.dump("TOD_direct");
+    flx_dif.dump("TOD_diffuse");
 }
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
