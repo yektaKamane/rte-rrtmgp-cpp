@@ -175,7 +175,7 @@ Fluxes_broadband_gpu<TF>::Fluxes_broadband_gpu(const int ncol_x, const int ncol_
     flux_dn     ({ncol_x*ncol_y, nlev}),
     flux_dn_dir ({ncol_x*ncol_y, nlev}),
     flux_net    ({ncol_x*ncol_y, nlev}),
-    flux_toa_up ({ncol_x, ncol_y}),
+    flux_tod_up ({ncol_x, ncol_y}),
     flux_sfc_dir({ncol_x, ncol_y}),
     flux_sfc_dif({ncol_x, ncol_y}),
     flux_sfc_up ({ncol_x, ncol_y}),

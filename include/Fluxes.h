@@ -169,7 +169,7 @@ class Fluxes_broadband_gpu : public Fluxes_gpu<TF>
         Array_gpu<TF,2>& get_flux_dn_dir() { return flux_dn_dir; }
         Array_gpu<TF,2>& get_flux_net   () { return flux_net;    }
 
-        Array_gpu<TF,2>& get_flux_toa_up    () { return flux_toa_up; }
+        Array_gpu<TF,2>& get_flux_tod_up    () { return flux_tod_up; }
         Array_gpu<TF,2>& get_flux_sfc_dir   () { return flux_sfc_dir;}
         Array_gpu<TF,2>& get_flux_sfc_dif   () { return flux_sfc_dif;}
         Array_gpu<TF,2>& get_flux_sfc_up    () { return flux_sfc_up; }
@@ -187,7 +187,7 @@ class Fluxes_broadband_gpu : public Fluxes_gpu<TF>
         Array_gpu<TF,2> flux_dn;
         Array_gpu<TF,2> flux_dn_dir;
         Array_gpu<TF,2> flux_net;
-        Array_gpu<TF,2> flux_toa_up;
+        Array_gpu<TF,2> flux_tod_up;
         Array_gpu<TF,2> flux_sfc_dir;
         Array_gpu<TF,2> flux_sfc_dif;
         Array_gpu<TF,2> flux_sfc_up;

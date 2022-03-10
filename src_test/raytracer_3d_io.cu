@@ -62,6 +62,10 @@ void run_ray_tracer(const Int n_photons)
     const Float dir_y = -std::sin(zenith_angle) * std::sin(azimuth_angle);
     const Float dir_z = -std::cos(zenith_angle);
 
+    std::vector<Float> surface_albedo_cpu(itot*jtot, surface_albedo);
+    Float* surface_albedo_gpu = allocate_gpu<Float>(itot*jtot);
+    copy_to_gpu(surface_albedo_gpu, surface_albedo_cpu.data(), itot*jtot);
+    
     // Create the spatial fields.
     std::vector<Optics_ext> k_ext(itot*jtot*ktot);
     std::vector<Optics_scat> ssa_asy(itot*jtot*ktot);
@@ -221,7 +225,7 @@ void run_ray_tracer(const Int n_photons)
             surface_down_direct_count_gpu, surface_down_diffuse_count_gpu, surface_up_count_gpu,
             atmos_direct_count_gpu, atmos_diffuse_count_gpu,
             k_ext_gpu, ssa_asy_gpu,
-            surface_albedo,
+            surface_albedo_gpu,
             diffuse_fraction,
             x_size, y_size, z_size,
             dx_grid, dy_grid, dz_grid,

@@ -1034,17 +1034,6 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
         Array_gpu<TF,6>& fmajor,
         const Array_gpu<TF,2>& col_dry)
 {
-    if (fminor.size()==0)
-    {
-        this->vmr.set_dims({ncol, nlay, this->get_ngas()});
-        this->col_gas.set_dims({ncol, nlay, this->get_ngas()+1});
-        this->col_gas.set_offsets({0, 0, -1});
-        this->col_mix.set_dims({2, ncol, nlay, this->get_nflav()});
-        this->fminor.set_dims({2, 2, ncol, nlay, this->get_nflav()});
-        this->scalings_lower.set_dims({ncol, nlay,  this->minor_scales_with_density_lower.dim(1)});
-        this->scalings_upper.set_dims({ncol, nlay,  this->minor_scales_with_density_upper.dim(1)});
-    }
-    
     // CvH add all the checking...
     const int ngas = this->get_ngas();
     const int nflav = this->get_nflav();
@@ -1056,18 +1045,26 @@ void Gas_optics_rrtmgp_gpu<TF>::compute_gas_taus(
     const int nminorklower = this->kminor_lower.dim(3);
     const int nminorupper = this->minor_scales_with_density_upper.dim(1);
     const int nminorkupper = this->kminor_upper.dim(3);
-
-    const int block_lay = 16;
-    const int block_col = 16;
-
-    const int grid_col = ncol/block_col + (ncol%block_col > 0);
-    const int grid_lay = nlay/block_lay + (nlay%block_lay > 0);
-
-    dim3 grid_gpu(grid_col, grid_lay);
-    dim3 block_gpu(block_col, block_lay);
-
-    if (igpt == 0)
+    
+    if (fminor.size()==0)
     {
+        this->vmr.set_dims({ncol, nlay, this->get_ngas()});
+        this->col_gas.set_dims({ncol, nlay, this->get_ngas()+1});
+        this->col_gas.set_offsets({0, 0, -1});
+        this->col_mix.set_dims({2, ncol, nlay, this->get_nflav()});
+        this->fminor.set_dims({2, 2, ncol, nlay, this->get_nflav()});
+        this->scalings_lower.set_dims({ncol, nlay,  this->minor_scales_with_density_lower.dim(1)});
+        this->scalings_upper.set_dims({ncol, nlay,  this->minor_scales_with_density_upper.dim(1)});
+
+        const int block_lay = 16;
+        const int block_col = 16;
+
+        const int grid_col = ncol/block_col + (ncol%block_col > 0);
+        const int grid_lay = nlay/block_lay + (nlay%block_lay > 0);
+
+        dim3 grid_gpu(grid_col, grid_lay);
+        dim3 block_gpu(block_col, block_lay);
+
         for (int igas=0; igas<=ngas; ++igas)
         {
             const Array_gpu<TF,2>& vmr_2d = igas > 0 ? gas_desc.get_vmr(this->gas_names({igas})) : gas_desc.get_vmr(this->gas_names({1}));

@@ -536,6 +536,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         const Gas_concs_gpu<TF>& gas_concs,
         const Array_gpu<TF,2>& p_lay, const Array_gpu<TF,2>& p_lev,
         const Array_gpu<TF,2>& t_lay, const Array_gpu<TF,2>& t_lev,
+        const Array_gpu<TF,1>& z_lev,
         const Array_gpu<TF,1>& grid_dims,
         Array_gpu<TF,2>& col_dry,
         const Array_gpu<TF,2>& sfc_alb_dir, const Array_gpu<TF,2>& sfc_alb_dif,
@@ -548,7 +549,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         Array_gpu<TF,2>& sw_flux_dn_dir, Array_gpu<TF,2>& sw_flux_net,
         Array_gpu<TF,3>& sw_bnd_flux_up, Array_gpu<TF,3>& sw_bnd_flux_dn,
         Array_gpu<TF,3>& sw_bnd_flux_dn_dir, Array_gpu<TF,3>& sw_bnd_flux_net,
-        Array_gpu<TF,2>& rt_flux_toa_up,
+        Array_gpu<TF,2>& rt_flux_tod_up,
         Array_gpu<TF,2>& rt_flux_sfc_dir,
         Array_gpu<TF,2>& rt_flux_sfc_dif,
         Array_gpu<TF,2>& rt_flux_sfc_up,
@@ -593,7 +594,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_net);
         if (switch_raytracing)
         {
-            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_toa_up);
+            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_tod_up);
             rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_dir);
             rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_dif);
             rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_up);
@@ -681,15 +682,15 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                 
                 raytracer.trace_rays(
                         ray_count,
-                        n_col_x, n_col_y, n_z,
+                        n_col_x, n_col_y, n_z, n_lay,
                         dx_grid, dy_grid, dz_grid,
+                        z_lev,
                         dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
                         dynamic_cast<Optical_props_2str_gpu<TF>&>(*cloud_optical_props),
-                        sfc_alb_dir({band,1}), zenith_angle, 
+                        sfc_alb_dir, zenith_angle, 
                         azimuth_angle,
-                        (*fluxes).get_flux_dn_dir()({1, n_z}),
-                        (*fluxes).get_flux_dn()({1, n_z}) - (*fluxes).get_flux_dn_dir()({1, n_z}),
-                        (*fluxes).get_flux_toa_up(),
+                        toa_src,
+                        (*fluxes).get_flux_tod_up(),
                         (*fluxes).get_flux_sfc_dir(),
                         (*fluxes).get_flux_sfc_dif(),
                         (*fluxes).get_flux_sfc_up(),
@@ -706,8 +707,8 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             if (switch_raytracing)
             {
                 gpoint_kernel_launcher_cuda::add_from_gpoint(
-                        n_col_x, n_col_y, rt_flux_toa_up, rt_flux_sfc_dir, rt_flux_sfc_dif, rt_flux_sfc_up,
-                        (*fluxes).get_flux_toa_up(), (*fluxes).get_flux_sfc_dir(), (*fluxes).get_flux_sfc_dif(), (*fluxes).get_flux_sfc_up());
+                        n_col_x, n_col_y, rt_flux_tod_up, rt_flux_sfc_dir, rt_flux_sfc_dif, rt_flux_sfc_up,
+                        (*fluxes).get_flux_tod_up(), (*fluxes).get_flux_sfc_dir(), (*fluxes).get_flux_sfc_dif(), (*fluxes).get_flux_sfc_up());
 
                 gpoint_kernel_launcher_cuda::add_from_gpoint(
                         n_col, n_z, rt_flux_abs_dir, rt_flux_abs_dif,

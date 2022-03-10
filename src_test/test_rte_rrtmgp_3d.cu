@@ -244,14 +244,17 @@ void solve_radiation(int argc, char** argv)
     Array<TF,1> grid_x;
     Array<TF,1> grid_y;
     Array<TF,1> grid_z;
+    Array<TF,1> z_lev;
     if (switch_raytracing)
     {
         grid_x.set_dims({n_col_x});
         grid_y.set_dims({n_col_y});
         grid_z.set_dims({n_z});
+        z_lev.set_dims({n_lev});
         grid_x = std::move(input_nc.get_variable<TF>("x", {n_col_x}));
         grid_y = std::move(input_nc.get_variable<TF>("y", {n_col_y}));
         grid_z = std::move(input_nc.get_variable<TF>("z", {n_z}));
+        z_lev = std::move(input_nc.get_variable<TF>("z_lev", {n_lev}));
         grid_dims({1}) = grid_x({2}) - grid_x({1});
         grid_dims({2}) = grid_y({2}) - grid_y({1});
         grid_dims({3}) = grid_z({2}) - grid_z({1});
@@ -600,7 +603,7 @@ void solve_radiation(int argc, char** argv)
         Array_gpu<TF,2> sw_flux_dn_dir;
         Array_gpu<TF,2> sw_flux_net;
         
-        Array_gpu<TF,2> rt_flux_toa_up;
+        Array_gpu<TF,2> rt_flux_tod_up;
         Array_gpu<TF,2> rt_flux_sfc_dir;
         Array_gpu<TF,2> rt_flux_sfc_dif;
         Array_gpu<TF,2> rt_flux_sfc_up;
@@ -616,7 +619,7 @@ void solve_radiation(int argc, char** argv)
             sw_flux_net   .set_dims({n_col, n_lev});
             if (switch_raytracing)
             {
-                rt_flux_toa_up .set_dims({n_col_x, n_col_y});
+                rt_flux_tod_up .set_dims({n_col_x, n_col_y});
                 rt_flux_sfc_dir.set_dims({n_col_x, n_col_y});
                 rt_flux_sfc_dif.set_dims({n_col_x, n_col_y});
                 rt_flux_sfc_up .set_dims({n_col_x, n_col_y});
@@ -649,6 +652,7 @@ void solve_radiation(int argc, char** argv)
             Array_gpu<TF,2> p_lev_gpu(p_lev);
             Array_gpu<TF,2> t_lay_gpu(t_lay);
             Array_gpu<TF,2> t_lev_gpu(t_lev);
+            Array_gpu<TF,1> z_lev_gpu(z_lev);
             Array_gpu<TF,1> grid_dims_gpu(grid_dims);
             Array_gpu<TF,2> col_dry_gpu(col_dry);
             Array_gpu<TF,2> sfc_alb_dir_gpu(sfc_alb_dir);
@@ -678,6 +682,7 @@ void solve_radiation(int argc, char** argv)
                     gas_concs_gpu,
                     p_lay_gpu, p_lev_gpu,
                     t_lay_gpu, t_lev_gpu,
+                    z_lev_gpu,
                     grid_dims_gpu,
                     col_dry_gpu,
                     sfc_alb_dir_gpu, sfc_alb_dif_gpu,
@@ -690,7 +695,7 @@ void solve_radiation(int argc, char** argv)
                     sw_flux_dn_dir, sw_flux_net,
                     sw_bnd_flux_up, sw_bnd_flux_dn,
                     sw_bnd_flux_dn_dir, sw_bnd_flux_net,
-                    rt_flux_toa_up,
+                    rt_flux_tod_up,
                     rt_flux_sfc_dir,
                     rt_flux_sfc_dif,
                     rt_flux_sfc_up,
@@ -736,7 +741,7 @@ void solve_radiation(int argc, char** argv)
         Array<TF,3> sw_bnd_flux_dn_dir_cpu(sw_bnd_flux_dn_dir);
         Array<TF,3> sw_bnd_flux_net_cpu(sw_bnd_flux_net);
         
-        Array<TF,2> rt_flux_toa_up_cpu(rt_flux_toa_up);
+        Array<TF,2> rt_flux_tod_up_cpu(rt_flux_tod_up);
         Array<TF,2> rt_flux_sfc_dir_cpu(rt_flux_sfc_dir);
         Array<TF,2> rt_flux_sfc_dif_cpu(rt_flux_sfc_dif);
         Array<TF,2> rt_flux_sfc_up_cpu(rt_flux_sfc_up);
@@ -780,14 +785,14 @@ void solve_radiation(int argc, char** argv)
 
             if (switch_raytracing)
             {
-                auto nc_rt_flux_toa_up  = output_nc.add_variable<TF>("rt_flux_toa_up",  {"y","x"});    
+                auto nc_rt_flux_tod_up  = output_nc.add_variable<TF>("rt_flux_tod_up",  {"y","x"});    
                 auto nc_rt_flux_sfc_dir = output_nc.add_variable<TF>("rt_flux_sfc_dir", {"y","x"}); 
                 auto nc_rt_flux_sfc_dif = output_nc.add_variable<TF>("rt_flux_sfc_dif", {"y","x"}); 
                 auto nc_rt_flux_sfc_up  = output_nc.add_variable<TF>("rt_flux_sfc_up",  {"y","x"}); 
                 auto nc_rt_flux_abs_dir = output_nc.add_variable<TF>("rt_flux_abs_dir", {"z","y","x"}); 
                 auto nc_rt_flux_abs_dif = output_nc.add_variable<TF>("rt_flux_abs_dif", {"z","y","x"}); 
             
-                nc_rt_flux_toa_up .insert(rt_flux_toa_up_cpu .v(), {0,0});
+                nc_rt_flux_tod_up .insert(rt_flux_tod_up_cpu .v(), {0,0});
                 nc_rt_flux_sfc_dir.insert(rt_flux_sfc_dir_cpu.v(), {0,0});
                 nc_rt_flux_sfc_dif.insert(rt_flux_sfc_dif_cpu.v(), {0,0});
                 nc_rt_flux_sfc_up .insert(rt_flux_sfc_up_cpu .v(), {0,0});

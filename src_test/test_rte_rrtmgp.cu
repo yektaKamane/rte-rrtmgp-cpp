@@ -554,6 +554,7 @@ void solve_radiation(int argc, char** argv)
 
         auto run_solver = [&]()
         {
+            Array_gpu<TF,1> z_lev_gpu;
             Array_gpu<TF,2> p_lay_gpu(p_lay);
             Array_gpu<TF,2> p_lev_gpu(p_lev);
             Array_gpu<TF,2> t_lay_gpu(t_lay);
@@ -595,6 +596,7 @@ void solve_radiation(int argc, char** argv)
                     gas_concs_gpu,
                     p_lay_gpu, p_lev_gpu,
                     t_lay_gpu, t_lev_gpu,
+                    z_lev_gpu,
                     grid_dims,
                     col_dry_gpu,
                     sfc_alb_dir_gpu, sfc_alb_dif_gpu,
