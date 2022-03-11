@@ -233,6 +233,15 @@ void ray_tracer_kernel(
     const Float z_top = z_lev_bg[kbg];
     
     const int n = blockDim.x * blockIdx.x + threadIdx.x;
+    
+    // Check background tranmissivity, if this is too ow don't bother starting the raytracer
+    Float bg_tau = 0;
+    for (int k=0; k<kbg; ++k)
+        bg_tau += k_ext_bg[i].gas * abs(z_lev_bg[i+1]-z_lev_bg[i]);
+    const Float bg_transmissivity = exp(-bg_tau);
+    
+    if (bg_transmissivity < Float(1.e-4)) return;
+    
     Photon photon;
     Random_number_generator<Float> rng(n);
     Quasi_random_number_generator_2d qrng(qrng_vectors, qrng_constants, n * photons_to_shoot);
