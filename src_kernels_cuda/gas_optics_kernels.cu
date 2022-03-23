@@ -159,6 +159,20 @@ void zero_array_kernel(
     }
 }
 
+__global__
+void zero_array_kernel(
+        const int ni,
+        int* __restrict__ arr)
+{
+    const int ii = blockIdx.x*blockDim.x + threadIdx.x;
+
+    if ( (ii < ni) )
+    {
+        const int idx = ii;
+        arr[idx] = 0;
+    }
+}
+
 template<typename TF> __global__
 void Planck_source_kernel(
         const int ncol, const int nlay, const int nband, const int ngpt,

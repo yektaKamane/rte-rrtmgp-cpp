@@ -22,7 +22,7 @@
 #include <numeric>
 #include <curand_kernel.h>
 
-#include "Radiation_solver.h"
+#include "Radiation_solver_bw.h"
 #include "Status.h"
 #include "Netcdf_interface.h"
 
@@ -40,6 +40,48 @@
 
 namespace
 {
+    template<typename TF>__global__
+    void move_optprop_kernel(
+        const int ncol, const int nlay, const TF* __restrict__ tau_in, const TF* __restrict__ ssa_in, 
+        TF* __restrict__ tau_out, TF* __restrict__ ssa_out)
+    {
+        const int icol = blockIdx.x*blockDim.x + threadIdx.x;
+        const int ilay = blockIdx.y*blockDim.y + threadIdx.y;
+        if ((icol<ncol) && (ilay<nlay))
+        {
+            const int idx = icol + ilay*ncol;
+            tau_out[idx] = tau_in[idx];
+            ssa_out[idx] = ssa_in[idx];
+        }
+
+    }
+
+
+    template<typename TF>__global__
+    void scaling_to_subset_kernel(
+            const int ncol, const int ngpt, TF* __restrict__ toa_src, const TF tsi_scaling)
+    {
+        const int icol = blockIdx.x*blockDim.x + threadIdx.x;
+        if ( ( icol < ncol)  )
+        {
+            const int idx = icol;
+            toa_src[idx] *= tsi_scaling;
+        }
+    }
+
+    template<typename TF>
+    void scaling_to_subset(
+            const int ncol, const int ngpt, Array_gpu<TF,1>& toa_src, const TF tsi_scaling)
+    {
+        const int block_col = 16;
+        const int grid_col  = ncol/block_col + (ncol%block_col > 0);
+        
+        dim3 grid_gpu(grid_col, 1);
+        dim3 block_gpu(block_col, 1);
+        scaling_to_subset_kernel<<<grid_gpu, block_gpu>>>(
+            ncol, ngpt, toa_src.ptr(), tsi_scaling);
+    }
+    
     template<typename TF>__global__
     void scaling_to_subset_kernel(
             const int ncol, const int ngpt, TF* __restrict__ toa_src, const TF* __restrict__ tsi_scaling)
@@ -510,6 +552,97 @@ void Radiation_solver_longwave<TF>::solve_gpu(
     }
 }
 
+
+template<typename TF>
+TF get_x(const TF wv)
+{
+    const TF a = (wv - TF(442.0)) * ((wv < TF(442.0)) ? TF(0.0624) : TF(0.0374));  
+    const TF b = (wv - TF(599.8)) * ((wv < TF(599.8)) ? TF(0.0264) : TF(0.0323));  
+    const TF c = (wv - TF(501.1)) * ((wv < TF(501.1)) ? TF(0.0490) : TF(0.0382));  
+    return TF(0.362) * std::exp(TF(-0.5)*a*a) + TF(1.056) * std::exp(TF(-0.5)*b*b) - TF(0.065) * std::exp(TF(-0.5)*c*c);
+}
+
+template<typename TF>
+TF get_y(const TF wv)
+{
+    const TF a = (wv - TF(568.8)) * ((wv < TF(568.8)) ? TF(0.0213) : TF(0.0247));  
+    const TF b = (wv - TF(530.9)) * ((wv < TF(530.9)) ? TF(0.0613) : TF(0.0322));  
+    return TF(0.821) * std::exp(TF(-0.5)*a*a) + TF(.286) * std::exp(TF(-0.5)*b*b);
+}
+template<typename TF>
+TF get_z(const TF wv)
+{
+    const TF a = (wv - TF(437.0)) * ((wv < TF(437.0)) ? TF(0.0845) : TF(0.0278));  
+    const TF b = (wv - TF(459.0)) * ((wv < TF(459.0)) ? TF(0.0385) : TF(0.0725));  
+    return TF(1.217) * std::exp(TF(-0.5)*a*a) + TF(0.681) * std::exp(TF(-0.5)*b*b);
+}
+    
+
+template<typename TF>
+TF Planck(TF wv)
+{
+    const TF h = TF(6.62607015e-34);
+    const TF c = TF(299792458.);
+    const TF k = TF(1.380649e-23);
+    const TF nom = 2*h*c*c / (wv*wv*wv*wv*wv);
+    const TF denom = exp(h*c/(wv*k*TF(5778)))-TF(1.);
+    return (nom/denom);
+}
+
+template<typename TF>
+TF Planck_integrator(
+        const TF wv1, const TF wv2)
+{
+    const int n = 100;
+    const TF sa = 6.771e-5;
+    const TF dwv = (wv2-wv1)/TF(n);
+    TF sum = 0;
+    for (int i=0; i<n; ++i)
+    {
+        const TF wv = (wv1 + i*dwv)*1e-9;
+        sum += Planck(wv) * dwv;
+    }
+    return sum * TF(1e-9) * sa;
+}
+
+template<typename TF>
+TF rayleigh_mean(
+    const TF wv1, const TF wv2)
+{
+    const TF n = 1.000287;
+    const TF Ns = 2.546899e19;
+    const TF dwv = (wv2-wv1)/100.;
+    TF sigma_mean = 0;
+    for (int i=0; i<100; ++i)
+    {
+        const TF wv = (wv1 + i*dwv);
+        const TF n = 1+1e-8*(8060.77 + 2481070/(132.274-pow((wv/1e3),-2)) + 17456.3/(39.32957-pow((wv/1e3),-2)));
+        const TF nom = 24*M_PI*M_PI*M_PI*pow((n*n-1),2);
+        const TF denom = pow((wv/1e7),4) * Ns*Ns * pow((n*n +2), 2);
+        sigma_mean += nom/denom * 1.055;
+    }
+    return sigma_mean / 100.;
+}
+
+template<typename TF>
+TF xyz_irradiance(
+        const TF wv1, const TF wv2,
+        TF (*get_xyz)(TF))
+{
+    TF wv = wv1; //int n = 1000; 
+    const TF dwv = TF(0.1);//(wv2-wv1)/TF(n);
+    TF sum = 0;
+    //for (int i=0; i<n; ++i)
+    while (wv < wv2)
+    {
+        const TF wv_tmp = wv + dwv/TF(2.);// = (wv1 + i*dwv) + dwv/TF(2.);
+        //const TF wv = (wv1 + i*dwv) + dwv/TF(2.);
+        sum += get_xyz(wv_tmp) * Planck(wv_tmp*TF(1e-9)) * dwv;
+        wv += dwv;
+    }
+    return sum * TF(1e-9);
+}
+
 template<typename TF>
 Radiation_solver_shortwave<TF>::Radiation_solver_shortwave(
         const Gas_concs_gpu<TF>& gas_concs,
@@ -527,10 +660,8 @@ Radiation_solver_shortwave<TF>::Radiation_solver_shortwave(
 
 template<typename TF>
 void Radiation_solver_shortwave<TF>::solve_gpu(
-        const bool switch_fluxes,
-        const bool switch_raytracing,
+        const bool tune_step,
         const bool switch_cloud_optics,
-        const bool switch_output_optical,
         const bool switch_output_bnd_fluxes,
         const Int ray_count,
         const Gas_concs_gpu<TF>& gas_concs,
@@ -543,18 +674,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         const Array_gpu<TF,1>& tsi_scaling, const Array_gpu<TF,1>& mu0,
         const Array_gpu<TF,2>& lwp, const Array_gpu<TF,2>& iwp,
         const Array_gpu<TF,2>& rel, const Array_gpu<TF,2>& rei,
-        Array_gpu<TF,3>& tau, Array_gpu<TF,3>& ssa, Array_gpu<TF,3>& g,
-        Array_gpu<TF,2>& toa_source,
-        Array_gpu<TF,2>& sw_flux_up, Array_gpu<TF,2>& sw_flux_dn,
-        Array_gpu<TF,2>& sw_flux_dn_dir, Array_gpu<TF,2>& sw_flux_net,
-        Array_gpu<TF,3>& sw_bnd_flux_up, Array_gpu<TF,3>& sw_bnd_flux_dn,
-        Array_gpu<TF,3>& sw_bnd_flux_dn_dir, Array_gpu<TF,3>& sw_bnd_flux_net,
-        Array_gpu<TF,2>& rt_flux_tod_up,
-        Array_gpu<TF,2>& rt_flux_sfc_dir,
-        Array_gpu<TF,2>& rt_flux_sfc_dif,
-        Array_gpu<TF,2>& rt_flux_sfc_up,
-        Array_gpu<TF,3>& rt_flux_abs_dir,
-        Array_gpu<TF,3>& rt_flux_abs_dif)
+        Array_gpu<TF,3>& XYZ)
 
 {
     const int n_col = p_lay.dim(1);
@@ -563,13 +683,16 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
     const int n_gpt = this->kdist_gpu->get_ngpt();
     const int n_bnd = this->kdist_gpu->get_nband();
     
-    const int n_col_x = (switch_raytracing) ? rt_flux_sfc_dir.dim(1) : n_col;
-    const int n_col_y = (switch_raytracing) ? rt_flux_sfc_dir.dim(2) : 1;
-    const int dx_grid = (switch_raytracing) ? grid_dims({1}) : 0;
-    const int dy_grid = (switch_raytracing) ? grid_dims({2}) : 0;
-    const int dz_grid = (switch_raytracing) ? grid_dims({3}) : 0;
-    const int n_z     = (switch_raytracing) ? grid_dims({4}) : 0;
+    const int dx_grid = grid_dims({1});
+    const int dy_grid = grid_dims({2});
+    const int dz_grid = grid_dims({3});
+    const int n_z     = grid_dims({4});
+    const int n_col_y = grid_dims({5});
+    const int n_col_x = grid_dims({6});
     
+    const int cam_nx = XYZ.dim(1);
+    const int cam_ny = XYZ.dim(2);
+    const int cam_ns = XYZ.dim(3);
     const BOOL_TYPE top_at_1 = p_lay({1, 1}) < p_lay({1, n_lay});
 
     optical_props = std::make_unique<Optical_props_2str_gpu<TF>>(n_col, n_lay, *kdist_gpu);
@@ -582,28 +705,16 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
     }
 
     Array_gpu<TF,1> toa_src({n_col});
-        
+    Array_gpu<TF,2> flux_camera({cam_nx, cam_ny});
+
     Array<int,2> cld_mask_liq({n_col, n_lay});
     Array<int,2> cld_mask_ice({n_col, n_lay});
     
-    if (switch_fluxes)
-    {
-        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_up);
-        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_dn);
-        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_dn_dir);
-        rrtmgp_kernel_launcher_cuda::zero_array(n_lev, n_col, sw_flux_net);
-        if (switch_raytracing)
-        {
-            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_tod_up);
-            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_dir);
-            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_dif);
-            rrtmgp_kernel_launcher_cuda::zero_array(n_col_y, n_col_x, rt_flux_sfc_up);
-            rrtmgp_kernel_launcher_cuda::zero_array(n_z, n_col_y, n_col_x, rt_flux_abs_dir);
-            rrtmgp_kernel_launcher_cuda::zero_array(n_z, n_col_y, n_col_x, rt_flux_abs_dif);
-        }
-    }
+    rrtmgp_kernel_launcher_cuda::zero_array(cam_ns, cam_nx, cam_ny, XYZ);
 
     const Array<int, 2>& band_limits_gpt(this->kdist_gpu->get_band_lims_gpoint());
+    TF total_source = 0.;
+    
     for (int igpt=1; igpt<=n_gpt; ++igpt)
     {
         int band = 0;
@@ -615,7 +726,13 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                 break;
             }
         }
-        if (band != 11) continue;      
+        //if (!tune_step && (! (band == 10 || band == 11 || band ==12))) continue; 
+        //if (band !=11) continue; 
+        if (igpt !=1) continue; 
+
+        const TF solar_source_band = kdist_gpu->band_source(band_limits_gpt({1,band}), band_limits_gpt({2,band}));
+        
+        printf("-> %d %f \n", band, solar_source_band);
         kdist_gpu->gas_optics(
                   igpt-1,
                   p_lay,
@@ -625,7 +742,9 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                   optical_props,
                   toa_src,
                   col_dry);
-        scaling_to_subset(n_col, n_gpt, toa_src, tsi_scaling);
+        
+        // scaling_to_subset(n_col, n_gpt, toa_src, tsi_scaling);
+        // scaling_to_subset(n_col, n_gpt, toa_src, local_planck/total_planck);
         
         if (switch_cloud_optics)
         {
@@ -645,84 +764,124 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                     dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
                     dynamic_cast<Optical_props_2str_gpu<TF>&>(*cloud_optical_props));
         }
+        if (tune_step) return;
+        const Array<TF, 2>& band_limits_wn(this->kdist_gpu->get_band_lims_wavenumber());
         
-        // Store the optical properties, if desired
-        if (switch_output_optical)
+        const int nwv = 1;
+        const TF wv1 = 1. / band_limits_wn({2,band}) * Float(1.e7);
+        const TF wv2 = 1. / band_limits_wn({1,band}) * Float(1.e7);
+        const TF dwv = (wv2-wv1)/TF(nwv);
+        const TF total_planck = Planck_integrator(wv1,wv2);
+        
+        for (int iwv=0; iwv<nwv; ++iwv)
         {
-            gpoint_kernel_launcher_cuda::get_from_gpoint(
-                    n_col, n_lay, igpt-1, tau, ssa, g, optical_props->get_tau(),
-                     optical_props->get_ssa(),  optical_props->get_g());
-
-            gpoint_kernel_launcher_cuda::get_from_gpoint(
-                    n_col, igpt-1, toa_source, toa_src);
-        }
-        if (switch_fluxes)
-        {  
+            const TF wv1_sub = wv1 + iwv*dwv;
+            const TF wv2_sub = wv1 + (iwv+1)*dwv;
+            const TF local_planck = Planck_integrator(wv1_sub,wv2_sub);   
+            const TF rayleigh = rayleigh_mean(wv1_sub, wv2_sub);   
+            // //const TF toa_factor = local_planck / total_planck * TF(1.)/solar_source_band; 
+            // const TF toa_factor = TF(.9287681652667048)/solar_source_band; 
+            const TF toa_factor = TF(1.);
+            //total_source += toa_src({1}) * toa_factor * mu0({1});
             std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
-                    std::make_unique<Fluxes_broadband_gpu<TF>>(n_col_x, n_col_y, n_lev);
+                    std::make_unique<Fluxes_broadband_gpu<TF>>(cam_nx, cam_ny, 1);
+           // HIGHTUNES OPP:
+    Netcdf_file input_nc("hightune_opts.nc", Netcdf_mode::Read);
+
+    const int hnx = input_nc.get_dimension_size("x");
+    const int hny = input_nc.get_dimension_size("y");
+    const int hnz = input_nc.get_dimension_size("z");
+   
+    Array<TF,2> tau_in(input_nc.get_variable<TF>("tau", {n_lay, n_col_y, n_col_x}), {n_col_y*n_col_x, n_lay});
+    Array<TF,2> ssa_in(input_nc.get_variable<TF>("ssa", {n_lay, n_col_y, n_col_x}), {n_col_y*n_col_x, n_lay});
+    Array_gpu<TF,2> tau_gpu_in(tau_in);
+    Array_gpu<TF,2> ssa_gpu_in(ssa_in);
+    const int block_col = 16;
+    const int block_lay = 16;
+    const int grid_col  = n_col/block_col + (n_col%block_col > 0);
+    const int grid_lay  = n_lay/block_lay + (n_lay%block_lay > 0);
+    
+    dim3 grid_gpu(grid_col, grid_lay, 1);
+    dim3 block_gpu(block_col, block_lay, 1);
+   
+    move_optprop_kernel<<<grid_gpu,block_gpu>>>(n_col, n_lay, tau_gpu_in.ptr(), ssa_gpu_in.ptr(),  optical_props->get_tau().ptr(), optical_props->get_ssa().ptr());
+   // printf("-- \n");
+   // (*optical_props).get_tau() = std::move(tau_gpu_in);
+   // printf("-- \n");
+   // optical_props->get_ssa() = std::move(ssa_gpu_in);
+
+            // XYZ factors
+            Array<TF,1> xyz_factor({3});
+            xyz_factor({1}) = 1;//xyz_irradiance(wv1_sub,wv2_sub,&get_x);
+            xyz_factor({2}) = 1;//xyz_irradiance(wv1_sub,wv2_sub,&get_y);
+            xyz_factor({3}) = 1;//xyz_irradiance(wv1_sub,wv2_sub,&get_z);
+            Array_gpu<TF,1> xyz_factor_gpu(xyz_factor);
+            printf("%d %d %f %f %f %f \n",iwv,igpt,toa_factor,xyz_factor({1}),toa_src({1}),total_planck);
+            if (!switch_cloud_optics) 
+            {
+                rrtmgp_kernel_launcher_cuda::zero_array(n_col, n_lay, cloud_optical_props->get_tau());
+                rrtmgp_kernel_launcher_cuda::zero_array(n_col, n_lay, cloud_optical_props->get_ssa());
+            }
+
+            TF zenith_angle = TF(0.)/TF(180.) * M_PI;//std::acos(mu0({1}));
+            TF azimuth_angle = M_PI;//TF(3.4906585); //3.14; // sun approximately from south
             
-            rte_sw.rte_sw(
-                    optical_props,
-                    top_at_1,
-                    mu0,
-                    toa_src,
+            
+            raytracer.trace_rays(
+                    ray_count,
+                    n_col_x, n_col_y, n_z, n_lay,
+                    dx_grid, dy_grid, dz_grid,
+                    z_lev,
+                    dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
+                    dynamic_cast<Optical_props_2str_gpu<TF>&>(*cloud_optical_props),
                     sfc_alb_dir.subset({{ {band, band}, {1, n_col}}}),
-                    sfc_alb_dif.subset({{ {band, band}, {1, n_col}}}),
-                    Array_gpu<TF,1>(), // Add an empty array, no inc_flux.
-                    (*fluxes).get_flux_up(),
-                    (*fluxes).get_flux_dn(),
-                    (*fluxes).get_flux_dn_dir());
-
-            if (switch_raytracing)
-            {
-                if (!switch_cloud_optics) rrtmgp_kernel_launcher_cuda::zero_array(n_col, n_lay, cloud_optical_props->get_tau());
-
-                TF zenith_angle = std::acos(mu0({1}));
-                TF azimuth_angle = 3.14; // sun approximately from south
-                
-                raytracer.trace_rays(
-                        ray_count,
-                        n_col_x, n_col_y, n_z, n_lay,
-                        dx_grid, dy_grid, dz_grid,
-                        z_lev,
-                        dynamic_cast<Optical_props_2str_gpu<TF>&>(*optical_props),
-                        dynamic_cast<Optical_props_2str_gpu<TF>&>(*cloud_optical_props),
-                        sfc_alb_dir, zenith_angle, 
-                        azimuth_angle,
-                        toa_src,
-                        (*fluxes).get_flux_tod_up(),
-                        (*fluxes).get_flux_sfc_dir(),
-                        (*fluxes).get_flux_sfc_dif(),
-                        (*fluxes).get_flux_sfc_up(),
-                        (*fluxes).get_flux_abs_dir(),
-                        (*fluxes).get_flux_abs_dif());
-            }
-
-            (*fluxes).net_flux();
-
-            gpoint_kernel_launcher_cuda::add_from_gpoint(
-                    n_col, n_lev, sw_flux_up, sw_flux_dn, sw_flux_dn_dir, sw_flux_net,
-                    (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
+                    zenith_angle, 
+                    azimuth_angle,
+                    toa_src,
+                    toa_factor,
+                    rayleigh,
+                    col_dry,
+                    gas_concs.get_vmr("h2o"),
+                    flux_camera); // just a dummy name, this array will the the camera count!!!!
+            //return; 
+            raytracer.add_xyz_camera(
+                    cam_nx, cam_ny,
+                    xyz_factor_gpu,
+                    flux_camera,
+                    XYZ);
             
-            if (switch_raytracing)
-            {
-                gpoint_kernel_launcher_cuda::add_from_gpoint(
-                        n_col_x, n_col_y, rt_flux_tod_up, rt_flux_sfc_dir, rt_flux_sfc_dif, rt_flux_sfc_up,
-                        (*fluxes).get_flux_tod_up(), (*fluxes).get_flux_sfc_dir(), (*fluxes).get_flux_sfc_dif(), (*fluxes).get_flux_sfc_up());
+//            if (wv1_sub > 409 && wv1_sub < 410)
+//            {
+//                printf("%d %f %e\n",igpt,toa_src({1}) * toa_factor * mu0({1}),rayleigh);
+//                flux_camera.dump(std::to_string(igpt));
+//            }            
+            
+            //    (*fluxes).net_flux();
 
-                gpoint_kernel_launcher_cuda::add_from_gpoint(
-                        n_col, n_z, rt_flux_abs_dir, rt_flux_abs_dif,
-                        (*fluxes).get_flux_abs_dir(), (*fluxes).get_flux_abs_dif());
-            }
+            //    gpoint_kernel_launcher_cuda::add_from_gpoint(
+            //            n_col, n_lev, sw_flux_up, sw_flux_dn, sw_flux_dn_dir, sw_flux_net,
+            //            (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
+                
+            // gpoint_kernel_launcher_cuda::add_from_gpoint(
+            //         n_col_x, n_col_y, rt_flux_toa_up, rt_flux_sfc_dir, rt_flux_sfc_dif, rt_flux_sfc_up,
+            //         (*fluxes).get_flux_toa_up(), (*fluxes).get_flux_sfc_dir(), (*fluxes).get_flux_sfc_dif(), (*fluxes).get_flux_sfc_up());
 
-            if (switch_output_bnd_fluxes)
-            {
-                gpoint_kernel_launcher_cuda::get_from_gpoint(
-                        n_col, n_lev, igpt-1, sw_bnd_flux_up, sw_bnd_flux_dn, sw_bnd_flux_dn_dir, sw_bnd_flux_net,
-                        (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
-            }
+            // gpoint_kernel_launcher_cuda::add_from_gpoint(
+            //         n_col, n_z, rt_flux_abs_dir, rt_flux_abs_dif,
+            //         (*fluxes).get_flux_abs_dir(), (*fluxes).get_flux_abs_dif());
+
+            //    if (switch_output_bnd_fluxes)
+            //    {
+            //        gpoint_kernel_launcher_cuda::get_from_gpoint(
+            //                n_col, n_lev, igpt-1, sw_bnd_flux_up, sw_bnd_flux_dn, sw_bnd_flux_dn_dir, sw_bnd_flux_net,
+            //                (*fluxes).get_flux_up(), (*fluxes).get_flux_dn(), (*fluxes).get_flux_dn_dir(), (*fluxes).get_flux_net());
+            //    }
+            
         }
     }
+    //printf("%f %f \n", total_source,mu0({1}));
+    //raytracer.normalize_xyz_camera(
+     //       cam_nx, cam_ny, total_source, XYZ);
 }
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION

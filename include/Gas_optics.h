@@ -129,6 +129,8 @@ class Gas_optics_gpu : public Optical_props_gpu<TF>
                 const Array_gpu<TF,2>& col_dry) = 0;
 
        virtual TF get_tsi() const = 0;
+        
+       virtual TF band_source(const int gpt_start, const int gpt_end) const = 0;
 };
 #endif
 

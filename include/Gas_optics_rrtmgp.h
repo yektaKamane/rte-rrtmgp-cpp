@@ -389,7 +389,8 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
         int get_nPlanckTemp() const { return totplnk.dim(1); }
 
         TF get_tsi() const;
-
+        TF band_source(const int gpt_start, const int gpt_end) const;
+        Array_gpu<TF,1> solar_source_gpu;
         // Longwave variant.
         void gas_optics(
                 const int igpt,
@@ -495,7 +496,6 @@ class Gas_optics_rrtmgp_gpu : public Gas_optics_gpu<TF>
         Array_gpu<int,1> idx_minor_upper_gpu;
         Array_gpu<int,1> idx_minor_scaling_lower_gpu;
         Array_gpu<int,1> idx_minor_scaling_upper_gpu;
-        Array_gpu<TF,1> solar_source_gpu;
         Array_gpu<TF,4> krayl_gpu;
         Array_gpu<int,2> jtemp;
         Array_gpu<int,2> jpress;;

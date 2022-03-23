@@ -187,8 +187,8 @@ namespace
         __device__ Quasi_random_number_generator_2d(
                 curandDirectionVectors32_t* vectors, unsigned int* constants, unsigned int offset)
         {
-            curand_init(vectors[0], constants[0], offset, &state_x);
-            curand_init(vectors[1], constants[1], offset, &state_y);
+            curand_init(vectors[4], constants[4], offset, &state_x);
+            curand_init(vectors[5], constants[5], offset, &state_y);
         }
     
         __device__ unsigned int x() { return curand(&state_x); }
@@ -237,7 +237,9 @@ void ray_tracer_kernel(
     // Check background tranmissivity, if this is too ow don't bother starting the raytracer
     Float bg_tau = 0;
     for (int k=0; k<kbg; ++k)
-        bg_tau += k_ext_bg[i].gas * abs(z_lev_bg[i+1]-z_lev_bg[i]);
+    {
+        bg_tau += k_ext_bg[k].gas * abs(z_lev_bg[k+1]-z_lev_bg[k]);
+    }
     const Float bg_transmissivity = exp(-bg_tau);
     
     if (bg_transmissivity < Float(1.e-4)) return;

@@ -54,6 +54,8 @@ namespace rrtmgp_kernel_launcher_cuda
     
     template<typename TF>
     void zero_array(const int ni, const int nj, Array_gpu<TF,2>& arr);
+    
+    void zero_array(const int ni, Array_gpu<int,1>& arr);
 
     template<typename TF>
     void interpolation(

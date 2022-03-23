@@ -1305,6 +1305,15 @@ TF Gas_optics_rrtmgp_gpu<TF>::get_tsi() const
     return tsi;
 }
 
+template<typename TF>
+TF Gas_optics_rrtmgp_gpu<TF>::band_source(const int gpt_start, const int gpt_end) const
+{
+    TF bnd_src = 0.;
+    for (int igpt=gpt_start; igpt<=gpt_end; ++igpt)
+        bnd_src += this->solar_source({igpt});
+
+    return bnd_src;
+}
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
 template class Gas_optics_rrtmgp_gpu<float>;

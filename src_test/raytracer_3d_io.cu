@@ -43,18 +43,18 @@ void run_ray_tracer(const Int n_photons)
     // Grid properties.
     const Float dx_grid = 100.;
     const Float dy_grid = 100.;
-    const Float dz_grid = 30.;
+    const Float dz_grid = 500.;
 
-    const int itot = 240;
-    const int jtot = 240;
-    const int ktot = 284;
+    const int itot = 4;//240;
+    const int jtot = 4;//240;
+    const int ktot = 142;//284;
 
     const Float x_size = itot*dx_grid;
     const Float y_size = jtot*dy_grid;
     const Float z_size = ktot*dz_grid;
 
     // Radiation properties.
-    const Float surface_albedo = 0.2;
+    const Float surface_albedo = 0.07;
     const Float zenith_angle = 50.*(M_PI/180.);
     const Float azimuth_angle = 20.*(M_PI/180.);
     const Float diffuse_fraction = .0;
@@ -62,10 +62,6 @@ void run_ray_tracer(const Int n_photons)
     const Float dir_y = -std::sin(zenith_angle) * std::sin(azimuth_angle);
     const Float dir_z = -std::cos(zenith_angle);
 
-    std::vector<Float> surface_albedo_cpu(itot*jtot, surface_albedo);
-    Float* surface_albedo_gpu = allocate_gpu<Float>(itot*jtot);
-    copy_to_gpu(surface_albedo_gpu, surface_albedo_cpu.data(), itot*jtot);
-    
     // Create the spatial fields.
     std::vector<Optics_ext> k_ext(itot*jtot*ktot);
     std::vector<Optics_scat> ssa_asy(itot*jtot*ktot);
@@ -124,27 +120,26 @@ void run_ray_tracer(const Int n_photons)
             {
                 const int i0 = i*fi;
                 const Float i1_tmp = (i+1)*fi;
-                const int i1 = std::floor(i1_tmp) > i1_tmp ? std::floor(i1_tmp) : std::floor(i1_tmp)+1;
+                const int i1 = min(itot,(int)(std::floor(i1_tmp) > i1_tmp ? std::floor(i1_tmp) : std::floor(i1_tmp)+1));
                 
                 const int j0 = j*fj;
                 const Float j1_tmp = (j+1)*fj;
-                const int j1 = std::floor(j1_tmp) > j1_tmp ? std::floor(j1_tmp) : std::floor(j1_tmp)+1;
+                const int j1 = min(jtot,(int)(std::floor(j1_tmp) > j1_tmp ? std::floor(j1_tmp) : std::floor(j1_tmp)+1));
                 
                 const int k0 = k*fk;
                 const Float k1_tmp = (k+1)*fk;
-                const int k1 = std::floor(k1_tmp) > k1_tmp ? std::floor(k1_tmp) : std::floor(k1_tmp)+1;
-
+                const int k1 = min(ktot,(int)(std::floor(k1_tmp) > k1_tmp ? std::floor(k1_tmp) : std::floor(k1_tmp)+1));
+                
+                const int ijk_grid = i + j*ngrid_h + k*ngrid_h*ngrid_h; 
+                Float k_ext_null_tmp = k_null_gas_min;
                 for (int kk=k0; kk<k1; ++kk)
                     for (int jj=j0; jj<j1; ++jj)
                         for (int ii=i0; ii<i1; ++ii)
                         {
                             const int ijk_orig = ii + jj*itot + kk*itot*jtot; 
-                            const int ijk_grid = i + j*ngrid_h + k*ngrid_h*ngrid_h; 
-                            if (k_ext_cloud_tmp[ijk_orig] > Float(0.))
-                            {
-                                k_null_grid[ijk_grid] = k_ext_null;
-                            }
+                            k_ext_null_tmp = max(k_ext_null_tmp, k_ext[ijk_orig].gas + k_ext[ijk_orig].cloud);
                         }
+                k_null_grid[ijk_grid] = k_ext_null_tmp;
             }
 
     //// PREPARE OUTPUT ARRAYS ////
@@ -225,7 +220,7 @@ void run_ray_tracer(const Int n_photons)
             surface_down_direct_count_gpu, surface_down_diffuse_count_gpu, surface_up_count_gpu,
             atmos_direct_count_gpu, atmos_diffuse_count_gpu,
             k_ext_gpu, ssa_asy_gpu,
-            surface_albedo_gpu,
+            surface_albedo,
             diffuse_fraction,
             x_size, y_size, z_size,
             dx_grid, dy_grid, dz_grid,
