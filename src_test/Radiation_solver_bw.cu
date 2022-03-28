@@ -726,9 +726,8 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                 break;
             }
         }
-        //if (!tune_step && (! (band == 10 || band == 11 || band ==12))) continue; 
+        if (!tune_step && (! (band == 10 || band == 11 || band ==12))) continue; 
         //if (band !=11) continue; 
-        if (igpt !=1) continue; 
 
         const TF solar_source_band = kdist_gpu->band_source(band_limits_gpt({1,band}), band_limits_gpt({2,band}));
         
@@ -767,10 +766,22 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
         if (tune_step) return;
         const Array<TF, 2>& band_limits_wn(this->kdist_gpu->get_band_lims_wavenumber());
         
-        const int nwv = 1;
+        /* rrtmgp's bands are quite broad, we divide each spectral band in three equally broad spectral intervals 
+           and run each g-point for each spectral interval, using the mean rayleigh scattering coefficient of each spectral interval
+           in stead of RRTMGP's rayleigh scattering coefficients. 
+           The contribution of each spectral interval to the spectral band is based on the integrated (<>) Planck source function:
+           <Planck(spectral interval)> / <Planck(spectral band)>, with a sun temperature of 5778 K. This is not entirely accurate because 
+           the sun is not a black body radiatior, but the approximations comes close enough.
+          
+           */
+
+        // number of intervals
+        const int nwv = 3;
         const TF wv1 = 1. / band_limits_wn({2,band}) * Float(1.e7);
         const TF wv2 = 1. / band_limits_wn({1,band}) * Float(1.e7);
         const TF dwv = (wv2-wv1)/TF(nwv);
+
+        // 
         const TF total_planck = Planck_integrator(wv1,wv2);
         
         for (int iwv=0; iwv<nwv; ++iwv)
@@ -779,44 +790,17 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             const TF wv2_sub = wv1 + (iwv+1)*dwv;
             const TF local_planck = Planck_integrator(wv1_sub,wv2_sub);   
             const TF rayleigh = rayleigh_mean(wv1_sub, wv2_sub);   
-            // //const TF toa_factor = local_planck / total_planck * TF(1.)/solar_source_band; 
-            // const TF toa_factor = TF(.9287681652667048)/solar_source_band; 
-            const TF toa_factor = TF(1.);
-            //total_source += toa_src({1}) * toa_factor * mu0({1});
+            const TF toa_factor = local_planck / total_planck * TF(1.)/solar_source_band; 
+            
             std::unique_ptr<Fluxes_broadband_gpu<TF>> fluxes =
                     std::make_unique<Fluxes_broadband_gpu<TF>>(cam_nx, cam_ny, 1);
-           // HIGHTUNES OPP:
-    Netcdf_file input_nc("hightune_opts.nc", Netcdf_mode::Read);
-
-    const int hnx = input_nc.get_dimension_size("x");
-    const int hny = input_nc.get_dimension_size("y");
-    const int hnz = input_nc.get_dimension_size("z");
-   
-    Array<TF,2> tau_in(input_nc.get_variable<TF>("tau", {n_lay, n_col_y, n_col_x}), {n_col_y*n_col_x, n_lay});
-    Array<TF,2> ssa_in(input_nc.get_variable<TF>("ssa", {n_lay, n_col_y, n_col_x}), {n_col_y*n_col_x, n_lay});
-    Array_gpu<TF,2> tau_gpu_in(tau_in);
-    Array_gpu<TF,2> ssa_gpu_in(ssa_in);
-    const int block_col = 16;
-    const int block_lay = 16;
-    const int grid_col  = n_col/block_col + (n_col%block_col > 0);
-    const int grid_lay  = n_lay/block_lay + (n_lay%block_lay > 0);
-    
-    dim3 grid_gpu(grid_col, grid_lay, 1);
-    dim3 block_gpu(block_col, block_lay, 1);
-   
-    move_optprop_kernel<<<grid_gpu,block_gpu>>>(n_col, n_lay, tau_gpu_in.ptr(), ssa_gpu_in.ptr(),  optical_props->get_tau().ptr(), optical_props->get_ssa().ptr());
-   // printf("-- \n");
-   // (*optical_props).get_tau() = std::move(tau_gpu_in);
-   // printf("-- \n");
-   // optical_props->get_ssa() = std::move(ssa_gpu_in);
 
             // XYZ factors
             Array<TF,1> xyz_factor({3});
-            xyz_factor({1}) = 1;//xyz_irradiance(wv1_sub,wv2_sub,&get_x);
-            xyz_factor({2}) = 1;//xyz_irradiance(wv1_sub,wv2_sub,&get_y);
-            xyz_factor({3}) = 1;//xyz_irradiance(wv1_sub,wv2_sub,&get_z);
+            xyz_factor({1}) = xyz_irradiance(wv1_sub,wv2_sub,&get_x);
+            xyz_factor({2}) = xyz_irradiance(wv1_sub,wv2_sub,&get_y);
+            xyz_factor({3}) = xyz_irradiance(wv1_sub,wv2_sub,&get_z);
             Array_gpu<TF,1> xyz_factor_gpu(xyz_factor);
-            printf("%d %d %f %f %f %f \n",iwv,igpt,toa_factor,xyz_factor({1}),toa_src({1}),total_planck);
             if (!switch_cloud_optics) 
             {
                 rrtmgp_kernel_launcher_cuda::zero_array(n_col, n_lay, cloud_optical_props->get_tau());
@@ -824,7 +808,7 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             }
 
             TF zenith_angle = TF(0.)/TF(180.) * M_PI;//std::acos(mu0({1}));
-            TF azimuth_angle = M_PI;//TF(3.4906585); //3.14; // sun approximately from south
+            TF azimuth_angle = TF(0.);//M_PI;//TF(3.4906585); //3.14; // sun approximately from south
             
             
             raytracer.trace_rays(
@@ -842,19 +826,14 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
                     rayleigh,
                     col_dry,
                     gas_concs.get_vmr("h2o"),
-                    flux_camera); // just a dummy name, this array will the the camera count!!!!
+                    flux_camera); 
+            
             //return; 
             raytracer.add_xyz_camera(
                     cam_nx, cam_ny,
                     xyz_factor_gpu,
                     flux_camera,
                     XYZ);
-            
-//            if (wv1_sub > 409 && wv1_sub < 410)
-//            {
-//                printf("%d %f %e\n",igpt,toa_src({1}) * toa_factor * mu0({1}),rayleigh);
-//                flux_camera.dump(std::to_string(igpt));
-//            }            
             
             //    (*fluxes).net_flux();
 
@@ -879,9 +858,6 @@ void Radiation_solver_shortwave<TF>::solve_gpu(
             
         }
     }
-    //printf("%f %f \n", total_source,mu0({1}));
-    //raytracer.normalize_xyz_camera(
-     //       cam_nx, cam_ny, total_source, XYZ);
 }
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION

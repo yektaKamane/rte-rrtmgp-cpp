@@ -37,15 +37,15 @@ namespace
     // constexpr Float fov_v = 60./180.*M_PI; 
     
     // angle w.r.t. vertical: 0 degrees is looking up, 180 degrees down
-    constexpr Float zenith_cam = 180./180.*M_PI; //60./180.*M_PI; 
+    constexpr Float zenith_cam = 90./180.*M_PI; //60./180.*M_PI; 
     // angle w.r.t. north,: 0 degrees is looking north
     constexpr Float azimuth_cam = 0./180*M_PI;
     constexpr Vector upward_cam = {0, 1, 0};
     
-    constexpr Float half_angle = .266/180. * M_PI; // sun has a half angle of .266 degrees 
-    constexpr Float cos_half_angle = Float(0.9999892232642792); // cos(half_angle); 
+    constexpr Float half_angle = .26656288/180. * M_PI; // sun has a half angle of .266 degrees 
+    constexpr Float cos_half_angle = Float(0.9999891776066407); // cos(half_angle); 
     constexpr Float cos_half_angle_app = cos_half_angle; //we set this a bit larger that cos_half_angle to make sun larger
-    constexpr Float solid_angle = Float(6.771222754033653e-05); // 2.*M_PI*(1-cos_half_angle);
+    constexpr Float solid_angle = Float(6.799910294339209e-05); // 2.*M_PI*(1-cos_half_angle);
     
 
     
@@ -62,9 +62,6 @@ namespace
     static inline __device__
     Vector operator/(const Float s, const Vector v) { return Vector{v.x/s, v.y/s, v.z/s}; }
     
-    
-    
-    
     __device__
     Vector cross(const Vector v1, const Vector v2)
     {
@@ -73,7 +70,6 @@ namespace
                 v1.z*v2.x - v1.x*v2.z,
                 v1.x*v2.y - v1.y*v2.x};
     }
-    
     
     __device__
     Float dot(const Vector& v1, const Vector& v2)
@@ -94,6 +90,8 @@ namespace
     
     enum class Photon_kind { Direct, Diffuse };
     
+    enum class Phase_kind {Lambertian, Specular, Rayleigh, HG};
+    
     struct Photon
     {
         Vector position;
@@ -105,6 +103,12 @@ namespace
     
     __device__
     Float pow2(const Float d) { return d*d; }
+    
+    __device__
+    Vector specular(const Vector dir_in)
+    {
+        return Vector{dir_in.x, dir_in.y, Float(-1)*dir_in.z}; 
+    }
     
     __device__
     Float rayleigh(const Float random_number)
@@ -123,6 +127,12 @@ namespace
         const Float b = Float(2.)*g*pow2(Float(2.)*random_number*g + Float(1.) - g);
         const Float c = -g/Float(2.) - Float(1.)/(Float(2.)*g);
         return Float(-1.)*(a/b) - c;
+    }
+    
+    __device__
+    Float lambertian_phase()
+    {
+        return Float(1.)/M_PI;
     }
     
     __device__
@@ -145,14 +155,12 @@ namespace
         return Float(-1.)*log(-random_number + Float(1.) + Float_epsilon);
     }
     
-    
     __device__
     inline int float_to_int(const Float s_size, const Float ds, const int ntot_max)
     {
         const int ntot = static_cast<int>(s_size / ds);
         return ntot < ntot_max ? ntot : ntot_max-1;
     }
-    
     
     template<typename T>
     struct Random_number_generator
@@ -199,13 +207,13 @@ namespace
             const Float s_min, const Float s_min_bg)
 
     {
-        return 1;//
         Float tau;
         Float k_ext_null;
         Float k_ext_min;
         Float d_max = Float(0.);
-        bool transition = false; 
         Float tau_min = Float(0.);
+        
+        bool transition = false; 
         int i_n,j_n,k_n;
         while (true)
         {
@@ -222,6 +230,7 @@ namespace
             // main grid (dynamical) 
             else
             {
+                // distance to nearest boundary of acceleration gid voxel
                 if (d_max == Float(0.))
                 {
                     i_n = float_to_int(photon.position.x, kgrid_h, ngrid_h);
@@ -233,18 +242,15 @@ namespace
                     d_max = min(sx, min(sy, sz));
                     const int ijk = i_n + j_n*ngrid_h + k_n*ngrid_h*ngrid_h;
                     
+                    // decomposition tracking: minimum k_ext is used to integrate transmissivity, difference max-min as k_null
                     k_ext_min  = k_null_grid[ijk].k_min;
                     k_ext_null = k_null_grid[ijk].k_max - k_ext_min;
                 }
                 
-                if (!transition)
-                {
-                    tau = sample_tau(rng());
-                }
-                transition = false;
                 const Float dn = max(Float_epsilon, tau / k_ext_null);
                 if (dn >= d_max)
                 {
+                    // update position
                     tau_min += k_ext_min * d_max;
                     const Float dx = sun_dir.x * d_max;
                     const Float dy = sun_dir.y * d_max;
@@ -284,6 +290,7 @@ namespace
                 }
                 else
                 {
+                    // hit event: update event and evaluuate change the hit is a null collision
                     tau_min += k_ext_min * dn;
                     const Float dx = sun_dir.x * dn;
                     const Float dy = sun_dir.y * dn;
@@ -341,30 +348,16 @@ namespace
             const Float j = Float(ij_cam/cam_nx) / (Float(0.5) * Float(cam_nx)) - Float(1.) + Float(0.5) / Float(cam_nx);
              
             photon.position.x = Float(0.) + s_min;
-            photon.position.y = Float(0.) + s_min;//Float(24000.); 
-            photon.position.z = Float(2990.)+ s_min; 
+            photon.position.y = Float(0.) + s_min;
+            photon.position.z = Float(500.)+ s_min; 
               
-            //const Float xx = Float(i)/Float(512);
-            //const Float yy = Float(j)/Float(512);
-            //const Float radius = sqrt(xx*xx + yy*yy);
-            
-            //photon.direction.x = xx;
-            //photon.direction.y = yy;
-            //photon.direction.z = TF(1.) - radius;
-            //const Float zenith_angle = asin(radius);// zenith_0 + j * cam_dy;
-            //const Float azimuth_angle = atan2(xx,yy);//azimuth_0 + i * cam_dx;
-            //const Float zenith_angle = zenith_0 + j * cam_dy;
-            //const Float azimuth_angle = azimuth_0 + i * cam_dx;
-            //photon.direction.x = std::sin(zenith_angle) * std::sin(azimuth_angle);
-            //photon.direction.y = std::sin(zenith_angle) * std::cos(azimuth_angle);
-            //photon.direction.z = std::cos(zenith_angle);
             photon.direction = normalize(i*axis_h + j*axis_v + axis_z);
             
             photon.kind = Photon_kind::Direct;
             weight = 1;            
-            bg_idx = 0; //kbg-1;
+            bg_idx = 0; 
 
-            if ( (dot(photon.direction, sun_direction) > cos_half_angle_app) )//&& (photons_shot < photons_to_shoot/pixels_per_thread))
+            if ( (dot(photon.direction, sun_direction) > cos_half_angle_app) )
             {
                 const Float trans_sun = transmission_direct_sun(photon,n,rng,sun_direction,
                                             k_null_grid,k_ext,
@@ -383,36 +376,26 @@ namespace
     
     __device__
     inline Float probability_from_sun(
-            Photon photon, Vector sun_direction, const Float solid_angle, const Float g, const int scat_type_idx )
+            Photon photon, Vector sun_direction, const Float solid_angle, const Float g, const Phase_kind kind)
     {
-        return 1;
         const Float cos_angle = dot(photon.direction, sun_direction); 
-        if (scat_type_idx==0)
+        if (kind == Phase_kind::HG)
         {
             return henyey_phase(g, cos_angle) * solid_angle; 
         }
-        else
+        else if (kind == Phase_kind::Rayleigh)
         {
             return rayleigh_phase(cos_angle) * solid_angle;
         }
-    }
-    
-    struct Quasi_random_number_generator_2d
-    {
-        __device__ Quasi_random_number_generator_2d(
-                curandDirectionVectors32_t* vectors, unsigned int* constants, unsigned int offset)
+        else if (kind == Phase_kind::Lambertian)
         {
-            curand_init(vectors[0], constants[0], offset, &state_x);
-            curand_init(vectors[1], constants[1], offset, &state_y);
+            return lambertian_phase() * solid_angle;
         }
-    
-        __device__ unsigned int x() { return curand(&state_x); }
-        __device__ unsigned int y() { return curand(&state_y); }
-    
-        curandStateScrambledSobol32_t state_x;
-        curandStateScrambledSobol32_t state_y;
-    };
-    
+        else if (kind == Phase_kind::Specular)
+        {
+            return (dot( specular(photon.direction) , sun_direction) > cos_half_angle_app) ? Float(1.) : Float(0.); 
+        }
+    }
     
     __device__
     inline void write_photon_out(Float* field_out, const Float w)
@@ -439,9 +422,9 @@ void ray_tracer_kernel_bw(
         const Float x_size, const Float y_size, const Float z_size,
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,
-        const int itot, const int jtot, const int ktot, const int kbg,
-        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants)
+        const int itot, const int jtot, const int ktot, const int kbg)
 {
+    const Phase_kind surface_kind = Phase_kind::Specular;
     const int n = blockDim.x * blockIdx.x + threadIdx.x;
     Vector sun_direction;
     sun_direction.x = -dir_x;
@@ -452,9 +435,6 @@ void ray_tracer_kernel_bw(
     const Vector axis_h = normalize(cross(cam, upward_cam));
     const Vector axis_v = normalize(cross(cam, axis_h));
     const Vector axis_z = cam / tan(fov/Float(2.));
-    //if (n==0) printf("X %f %f %f \n",axis_h.x,axis_h.y,axis_h.z);
-    //if (n==0) printf("X %f %f %f \n",axis_v.x,axis_v.y,axis_v.z);
-    //if (n==0) printf("X %f %f %f \n",axis_z.x,axis_z.y,axis_z.z);
 
     // Check background tranmissivity, if this is too ow don't bother starting the raytracer
     extern __shared__ Float bg_tau_cum[];
@@ -472,28 +452,20 @@ void ray_tracer_kernel_bw(
     const Float kgrid_v = z_size/Float(ngrid_v);
     const Float z_top = z_lev_bg[kbg];
     
-    //const Float cam_dx = fov_h / Float(cam_nx);
-    //const Float cam_dy = fov_v / Float(cam_ny);
-    
-    Random_number_generator<Float> rng(n);
+    Random_number_generator<Float> rng(n + 100);
 
     const Float s_min = max(max(z_size, x_size), y_size) * Float_epsilon;
     const Float s_min_bg = max(max(x_size, y_size), z_top) * Float_epsilon;
     
     const int pixels_per_thread = cam_nx * cam_ny / (grid_size * block_size); 
     const int photons_per_pixel = photons_to_shoot / pixels_per_thread ;
-    //while (counter[0] < pixels_per_thread*cam_nx*cam_ny)
+    
     while (counter[0] < cam_nx*cam_ny)
     {
-        const int ij_cam = atomicAdd(&counter[0], 1);// / pixels_per_thread;
+        const int ij_cam = atomicAdd(&counter[0], 1);
         if (ij_cam >= cam_nx*cam_ny) return;
-        
-        const int i = int(fmod(ij_cam, cam_nx));// - 512;
-        const int j = int(ij_cam/cam_nx);//- 512;
-        //const Float xx = Float(i)/Float(512);
-        //const Float yy = Float(j)/Float(512);
-        //const Float radius = sqrt(xx*xx + yy*yy);
-        //if (radius >= 1-Float_epsilon) continue;
+        const int i = int(fmod(ij_cam, cam_nx));
+        const int j = int(ij_cam/cam_nx);
         const bool completed = false;
         Int photons_shot = Atomic_reduce_const;
         Float weight;
@@ -544,7 +516,6 @@ void ray_tracer_kernel_bw(
                         photon.position.z = z_size - s_min;
                         d_max = Float(0.);
                         transition=true;
-                    //    if (photon.position.x < 0) printf("%d %f %f \n\n",n,photon.position.x,photon.direction.x);
                     }
                     else if (photon.position.z >= z_top)
                     {
@@ -592,8 +563,10 @@ void ray_tracer_kernel_bw(
                         const Float g = cloud_scatter ? ssa_asy_bg[bg_idx].asy : Float(0.);
                         const Float cos_scat = cloud_scatter ? henyey(g, rng()) : rayleigh(rng());
                         const Float sin_scat = max(Float(0.), sqrt(Float(1.) - cos_scat*cos_scat + Float_epsilon));
-                        
-                        const Float p_sun = probability_from_sun(photon, sun_direction, solid_angle, g, !cloud_scatter);
+
+                        // direct contribution
+                        const Phase_kind kind = cloud_scatter ? Phase_kind::HG :Phase_kind::Rayleigh; 
+                        const Float p_sun = probability_from_sun(photon, sun_direction, solid_angle, g, kind);
                         const Float trans_sun = transmission_direct_sun(photon,n,rng,sun_direction,
                                                     k_null_grid,k_ext,
                                                     bg_tau_cum, z_lev_bg, bg_idx,
@@ -662,7 +635,6 @@ void ray_tracer_kernel_bw(
                     d_max = min(sx, min(sy, sz));
                     ijk_n = i_n + j_n*ngrid_h + k_n*ngrid_h*ngrid_h;
                     k_ext_null = k_null_grid[ijk_n].k_max;
-                    //if (ijk_n < 0) printf("%f %f %f %f %f %f %f \n",k_ext_null,photon.position.z,photon.position.y,photon.position.x,photon.direction.z,kgrid_h,kgrid_v);
                 }
 
                 const Float dn = max(Float_epsilon, tau / k_ext_null);
@@ -691,7 +663,7 @@ void ray_tracer_kernel_bw(
                         weight *= local_albedo;
                 
                         // SUN SCATTERING GOES HERE
-                        const Float p_sun = probability_from_sun(photon, sun_direction, solid_angle, Float(0.), 1);
+                        const Float p_sun = probability_from_sun(photon, sun_direction, solid_angle, Float(0.), (photon.kind == Photon_kind::Direct) ? surface_kind : Phase_kind::Lambertian);
                         const Float trans_sun = transmission_direct_sun(photon,n,rng,sun_direction,
                                                     k_null_grid,k_ext,
                                                     bg_tau_cum, z_lev_bg, bg_idx,
@@ -700,7 +672,7 @@ void ray_tracer_kernel_bw(
                                                     x_size, y_size, z_size,
                                                     itot, jtot, ktot,
                                                    s_min, s_min_bg);
-                        atomicAdd(&camera_count[ij_cam], weight * Float(2.) * p_sun * trans_sun);
+                        atomicAdd(&camera_count[ij_cam], weight * p_sun * trans_sun);
 
                         if (weight < w_thres)
                             weight = (rng() > weight) ? Float(0.) : Float(1.);
@@ -708,13 +680,20 @@ void ray_tracer_kernel_bw(
                         // only with nonzero weight continue ray tracing, else start new ray
                         if (weight > Float(0.))
                         {
-                            const Float mu_surface = sqrt(rng());
-                            const Float azimuth_surface = Float(2.*M_PI)*rng();
+                            if (surface_kind == Phase_kind::Lambertian)
+                            {
+                                const Float mu_surface = sqrt(rng());
+                                const Float azimuth_surface = Float(2.*M_PI)*rng();
                 
-                            photon.direction.x = mu_surface*sin(azimuth_surface);
-                            photon.direction.y = mu_surface*cos(azimuth_surface);
-                            photon.direction.z = sqrt(Float(1.) - mu_surface*mu_surface + Float_epsilon);
-                            photon.kind = Photon_kind::Diffuse;
+                                photon.direction.x = mu_surface*sin(azimuth_surface);
+                                photon.direction.y = mu_surface*cos(azimuth_surface);
+                                photon.direction.z = sqrt(Float(1.) - mu_surface*mu_surface + Float_epsilon);
+                                photon.kind = Photon_kind::Diffuse;
+                            }
+                            else if (surface_kind == Phase_kind::Specular)
+                            {
+                                photon.direction = specular(photon.direction);
+                            }
                         }
                         else
                         {
@@ -735,23 +714,11 @@ void ray_tracer_kernel_bw(
                     // TOD exit
                     else if (photon.position.z >= z_size) 
                     {
-                //if (n==3396) printf("-> %d %f %f %f %f %d %d %d \n",n,d_max, photon.direction.x,photon.direction.y,photon.direction.z, i_n, j_n, k_n);
                         photon.position.z = z_size + s_min_bg;
                         tau -= d_max * k_ext_null;
                         bg_idx = 0; 
                         d_max = Float(0.);
                         transition = true;
-                        // reset_photon(
-                        //         photon, camera_count,camera_shot, photons_shot,
-                        //         ij_cam, n, rng, sun_direction,
-                        //         k_null_grid, k_ext,
-                        //         kgrid_h, kgrid_v,
-                        //         x_size, y_size, z_size,
-                        //         dx_grid, dy_grid, dz_grid,
-                        //         dir_x, dir_y, dir_z,
-                        //         photon_generation_completed, weight, bg_idx,
-                        //         cam_nx, cam_ny, axis_h, axis_v, axis_z,
-                        //         itot, jtot, ktot, kbg, bg_tau_cum, z_lev_bg, s_min, s_min_bg);
 
                     }
                     // regular cell crossing: adjust tau and apply periodic BC
@@ -824,7 +791,8 @@ void ray_tracer_kernel_bw(
                             const Float sin_scat = max(Float(0.), sqrt(Float(1.) - cos_scat*cos_scat + Float_epsilon));
 
                             // SUN SCATTERING GOES HERE
-                            const Float p_sun = probability_from_sun(photon, sun_direction, solid_angle, g, !cloud_scatter);
+                            const Phase_kind kind = cloud_scatter ? Phase_kind::HG : Phase_kind::Rayleigh; 
+                            const Float p_sun = probability_from_sun(photon, sun_direction, solid_angle, g, kind);
                             const Float trans_sun = transmission_direct_sun(photon,n,rng,sun_direction,
                                                         k_null_grid,k_ext,
                                                         bg_tau_cum, z_lev_bg, bg_idx,

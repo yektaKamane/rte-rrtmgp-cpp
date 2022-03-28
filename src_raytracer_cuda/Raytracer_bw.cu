@@ -95,7 +95,7 @@ namespace
             const int z1 = floor((grid_z+1)*fz);
             
             const int ijk_grid = grid_x +grid_y*ngrid_h + grid_z*ngrid_h*ngrid_h;
-            TF k_null_min = TF(1e15);
+            TF k_null_min = TF(1e15); // just a ridicilously high value 
             TF k_null_max = TF(0.);
             
             for (int k=z0; k<z1; ++k)
@@ -107,7 +107,7 @@ namespace
                         k_null_min = min(k_null_min, k_ext_tot);
                         k_null_max = max(k_null_max, k_ext_tot);
                     }
-            if (k_null_min == k_null_max) k_null_min = k_null_max * TF(0.9);
+            if (k_null_min == k_null_max) k_null_min = k_null_max * TF(0.99);
             k_null_grid[ijk_grid].k_min = k_null_min;
             k_null_grid[ijk_grid].k_max = k_null_max;
         }
@@ -134,7 +134,7 @@ namespace
             const TF rayl_cld = kext_cld * ssa_cld[idx];
             const TF kext_tot_old = tau_tot[idx] / dz_grid; 
             const TF kext_gas_old = kext_tot_old - kext_cld; 
-            const TF kabs_gas = kext_gas_old - (kext_tot_old * ssa_tot[idx] - rayl_cld); //(tau_tot[idx] / dz_grid - kext_cld) * (TF(1.) - ssa[idx]);
+            const TF kabs_gas = kext_gas_old - (kext_tot_old * ssa_tot[idx] - rayl_cld); 
             const TF kext_gas_new = kabs_gas + rayl_gas;
             //if (kext_cld < TF(1e-8))
             //{
@@ -150,19 +150,20 @@ namespace
             //  ssa_asy[idx].asy =  asy_tot[idx];
             //}
             
-            //if (kext_cld < TF(1e-8))
-            //{
-            //    k_ext[idx].cloud = TF(1.4e-6);
-            //    ssa_asy[idx].ssa = (rayl_gas + TF(0.9)*TF(1.4e-6)) / (kext_gas_new + TF(1.4e-6));
-            //    ssa_asy[idx].asy = TF(0.5);
-            //}
-            //else
-            //{
+            // if (kext_cld < TF(1e-8))
+            // {
+             //    k_ext[idx].cloud = TF(1.4e-6);
+            //     k_ext[idx].gas = kext_gas_new;
+             //    ssa_asy[idx].ssa = (rayl_gas + TF(0.9)*TF(1.4e-6)) / (kext_gas_new + TF(1.4e-6));
+             //    ssa_asy[idx].asy = TF(0.5);
+             //}
+             //else
+             //{
               k_ext[idx].cloud = kext_cld;
-              k_ext[idx].gas = kext_gas_old; //kext_gas_new;
-              ssa_asy[idx].ssa = ssa_tot[idx];// (rayl_gas + rayl_cld) / (kext_gas_new + kext_cld);
+              k_ext[idx].gas = kext_gas_new;
+              ssa_asy[idx].ssa = (rayl_gas + rayl_cld) / (kext_gas_new + kext_cld);
               ssa_asy[idx].asy =  asy_tot[idx];
-            //}
+            // }
         }
     }
 
@@ -195,15 +196,14 @@ namespace
             const TF kabs_gas = kext_gas_old - (kext_tot_old * ssa_tot[idx_in] - rayl_cld); //(tau_tot[idx] / dz_grid - kext_cld) * (TF(1.) - ssa[idx]);
             const TF kext_gas_new = kabs_gas + rayl_gas;
             
-            printf("-> %d %e %e \n",i,rayl_gas, rayl_cld);
         //    k_ext_bg[i].cloud = kext_cld;
         //    k_ext_bg[i].gas = kext_gas_new;
         //    ssa_asy_bg[i].ssa = (rayl_gas + rayl_cld) / (kext_gas_new + kext_cld);
         //    ssa_asy_bg[i].asy = asy_in; 
         //    z_lev_bg[i] = z_lev[i + nz];
             k_ext_bg[i].cloud = kext_cld;
-            k_ext_bg[i].gas = kext_gas_old;//kext_gas_new;
-            ssa_asy_bg[i].ssa = ssa_tot[idx_in];//(rayl_gas + rayl_cld) / (kext_gas_new + kext_cld);
+            k_ext_bg[i].gas = kext_gas_new;
+            ssa_asy_bg[i].ssa = (rayl_gas + rayl_cld) / (kext_gas_new + kext_cld);
             ssa_asy_bg[i].asy = asy[idx_in];//asy_in; 
             z_lev_bg[i] = z_lev[i + nz];
             if (i == nbg-1) z_lev_bg[i + 1] = z_lev[i + nz + 1];
@@ -212,7 +212,7 @@ namespace
     
     template<typename TF>__global__
     void count_to_flux_2d(
-            const int cam_nx, const int cam_ny, const TF photons_per_col, const TF* __restrict__ toa_src, const TF mu,
+            const int cam_nx, const int cam_ny, const TF photons_per_col, const TF* __restrict__ toa_src, const TF toa_factor,
             const TF* __restrict__ count, TF* __restrict__ flux)
     {
         const int ix = blockIdx.x*blockDim.x + threadIdx.x;
@@ -221,8 +221,7 @@ namespace
         if ( ( ix < cam_nx) && ( iy < cam_ny) )
         {
             const int idx = ix + iy*cam_nx;
-            const TF flux_per_ray = toa_src[0] * mu / photons_per_col;
-            //const TF flux_per_ray = TF(1.) / photons_per_col;
+            const TF flux_per_ray = toa_src[0] * toa_factor / photons_per_col;
             flux[idx] = count[idx] * flux_per_ray;
         }
     }
@@ -232,18 +231,6 @@ namespace
 template<typename TF>
 Raytracer_gpu<TF>::Raytracer_gpu()
 {
-    curandDirectionVectors32_t* qrng_vectors;
-    curandGetDirectionVectors32(
-                &qrng_vectors,
-                CURAND_SCRAMBLED_DIRECTION_VECTORS_32_JOEKUO6);
-    unsigned int* qrng_constants;
-    curandGetScrambleConstants32(&qrng_constants);
-
-    this->qrng_vectors_gpu = allocate_gpu<curandDirectionVectors32_t>(2);
-    this->qrng_constants_gpu = allocate_gpu<unsigned int>(2);
-    
-    copy_to_gpu(qrng_vectors_gpu, qrng_vectors, 2);
-    copy_to_gpu(qrng_constants_gpu, qrng_constants, 2);
 }
 
 template<typename TF>
@@ -410,8 +397,7 @@ void Raytracer_gpu<TF>::trace_rays(
             x_size, y_size, z_size,
             dx_grid, dy_grid, dz_grid,
             dir_x, dir_y, dir_z,
-            ncol_x, ncol_y, nz, nbg,
-            this->qrng_vectors_gpu, this->qrng_constants_gpu); 
+            ncol_x, ncol_y, nz, nbg);
     
     //// convert counts to fluxes
     const int block_cam_x = 8;

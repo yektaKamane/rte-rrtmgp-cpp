@@ -6,7 +6,7 @@
 
 #ifdef RTE_RRTMGP_SINGLE_PRECISION
 using Float = float;
-constexpr int block_size= 128;
+constexpr int block_size= 256;
 constexpr int grid_size = 512;
 #else
 using Float = double;
@@ -54,6 +54,5 @@ void ray_tracer_kernel_bw(
         const Float x_size, const Float y_size, const Float z_size,
         const Float dx_grid, const Float dy_grid, const Float dz_grid,
         const Float dir_x, const Float dir_y, const Float dir_z,
-        const int itot, const int jtot, const int ktot, const int kbg,
-        curandDirectionVectors32_t* qrng_vectors, unsigned int* qrng_constants);
+        const int itot, const int jtot, const int ktot, const int kbg);
 #endif
