@@ -160,7 +160,7 @@ void Aerosol_optics::aerosol_optics(const Array<Float, 2> &aermr01, const Array<
                                     const Array<Float, 2> &aermr07, const Array<Float, 2> &aermr08, const Array<Float, 2> &aermr09,
                                     const Array<Float, 2> &aermr10, const Array<Float, 2> &aermr11,
                                     const Array<Float, 2> &rh, const Array<Float, 2> &dpg,
-                                    Optical_props_2str &optical_props)
+                                    Optical_props_2str &optical_props, Array<Float, 1> &aod550)
 {
     const int ncol = rh.dim(1);
     const int nlay = rh.dim(2);
@@ -185,7 +185,7 @@ void Aerosol_optics::aerosol_optics(const Array<Float, 2> &aermr01, const Array<
     for (int ibnd=1; ibnd<=nbnd; ++ibnd)
         for (int ilay=1; ilay<=nlay; ++ilay)
                 for (int icol=1; icol<=ncol; ++icol)
-                {
+		{
                     const Float tau = ltau({icol, ilay, ibnd});
                     const Float taussa = ltaussa({icol, ilay, ibnd});
                     const Float taussag = ltaussag({icol, ilay, ibnd});
@@ -194,6 +194,23 @@ void Aerosol_optics::aerosol_optics(const Array<Float, 2> &aermr01, const Array<
                     optical_props.get_ssa()({icol, ilay, ibnd}) = taussa / std::max(tau, eps);
                     optical_props.get_g  ()({icol, ilay, ibnd}) = taussag / std::max(taussa, eps);
                 }
+
+    // calculate AOD at the band that contains 550nm
+    int ibnd = 11;
+    for (int ilay = 1; ilay <= nlay; ++ilay)
+        for (int icol = 1; icol <= ncol; ++icol)
+        {
+            if (ilay ==1)
+            {
+                const Float tau = ltau({icol, ilay, ibnd});
+                aod550({icol}) = tau;
+            }
+            else
+            {
+                const Float tau = ltau({icol, ilay, ibnd});
+                aod550({icol}) += tau;
+            }
+        }
 }
 
 

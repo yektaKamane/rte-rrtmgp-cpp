@@ -27,7 +27,7 @@ public:
             const Array<Float,2>& aermr05, const Array<Float,2>& aermr06, const Array<Float,2>& aermr07, const Array<Float,2>& aermr08,
             const Array<Float,2>& aermr09, const Array<Float,2>& aermr10, const Array<Float,2>& aermr11,
             const Array<Float, 2> &rh, const Array<Float, 2> &dpg,
-            Optical_props_2str& optical_props);
+            Optical_props_2str& optical_props, Array<Float, 1> &aod550);
 
 private:
     // Lookup table coefficients.
