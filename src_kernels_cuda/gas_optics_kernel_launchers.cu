@@ -332,7 +332,7 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 grid_gpu_min_1(1, 42, 8);
         dim3 block_gpu_min_1(8,1,16);
 
-        gas_optical_depths_minor_kernel<<<grid_gpu_min_1, block_gpu_min_1>>>(
+        gas_optical_depths_minor_kernel<8,1,16><<<grid_gpu_min_1, block_gpu_min_1>>>(
                                         ncol, nlay, ngpt,
                                         ngas, nflav, ntemp, neta,
                                         nminorlower,
@@ -356,7 +356,7 @@ namespace rrtmgp_kernel_launcher_cuda
         dim3 grid_gpu_min_2(1, 42, 4);
         dim3 block_gpu_min_2(8,1,32);
 
-        gas_optical_depths_minor_kernel<<<grid_gpu_min_2, block_gpu_min_2>>>(
+        gas_optical_depths_minor_kernel<8,1,32><<<grid_gpu_min_2, block_gpu_min_2>>>(
                                     ncol, nlay, ngpt,
                                     ngas, nflav, ntemp, neta,
                                     nminorupper,
