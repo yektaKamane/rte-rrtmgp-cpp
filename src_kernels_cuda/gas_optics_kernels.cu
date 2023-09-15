@@ -522,7 +522,8 @@ void compute_tau_minor_absorption_kernel(
 */
 
 #if use_shared_tau == 0
-__global__ void gas_optical_depths_minor_kernel(
+template<int block_size_x, int block_size_y, int block_size_z> __global__
+void gas_optical_depths_minor_kernel(
         const int ncol, const int nlay, const int ngpt,
         const int ngas, const int nflav, const int ntemp, const int neta,
         const int nminor,
@@ -546,10 +547,10 @@ __global__ void gas_optical_depths_minor_kernel(
         Float* __restrict__ tau,
         Float* __restrict__ tau_minor)
 {
-    const int ilay = blockIdx.y * blockDim.y + threadIdx.y;
-    const int icol = blockIdx.z * blockDim.z + threadIdx.z;
+    const int ilay = blockIdx.y * block_size_y + threadIdx.y;
+    const int icol = blockIdx.z * block_size_z + threadIdx.z;
 
-    __shared__ Float scalings[blockDim.z][blockDim.y];
+    __shared__ Float scalings[block_size_z][block_size_y];
 
     if ( (icol < ncol) && (ilay < nlay) )
     {
@@ -607,7 +608,7 @@ __global__ void gas_optical_depths_minor_kernel(
                 const int band_gpt = gpt_end-gpt_start;
                 const int gpt_offset = kminor_start[imnr]-1;
 
-                if constexpr (blockDim.x == 16)
+                if constexpr (block_size_x == 16)
                 {
                     if (threadIdx.x < band_gpt)
                     {
@@ -624,7 +625,7 @@ __global__ void gas_optical_depths_minor_kernel(
                 }
                 else
                 {
-                    for (int igpt=threadIdx.x; igpt<band_gpt; igpt+=blockDim.x)
+                    for (int igpt=threadIdx.x; igpt<band_gpt; igpt+=block_size_x)
                     {
                         Float ltau_minor = kfminor[0] * kin[(kjtemp-1) + (j0-1)*ntemp + (igpt+gpt_offset)*ntemp*neta] +
                                         kfminor[1] * kin[(kjtemp-1) +  j0   *ntemp + (igpt+gpt_offset)*ntemp*neta] +
