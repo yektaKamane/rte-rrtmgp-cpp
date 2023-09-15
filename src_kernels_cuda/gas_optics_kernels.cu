@@ -522,7 +522,6 @@ void compute_tau_minor_absorption_kernel(
 */
 
 #if use_shared_tau == 0
-template<int block_size_x, int block_size_y, int block_size_z, int max_gpt=16> __global__
 void gas_optical_depths_minor_kernel(
         const int ncol, const int nlay, const int ngpt,
         const int ngas, const int nflav, const int ntemp, const int neta,
