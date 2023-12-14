@@ -75,7 +75,7 @@ namespace Tools_gpu
         #elif defined(RTE_RRTMGP_GPU_MEMPOOL_OWN)
         data_ptr = (T*)(Memory_pool_gpu::get_instance().acquire(length*sizeof(T)));
         #else
-        cuda_safe_call(cudaMalloc((void **) &data_ptr, length*sizeof(T)));
+        cuda_safe_call(cudaMallocManaged((void **) &data_ptr, length*sizeof(T)));
         #endif
         return data_ptr;
     }
